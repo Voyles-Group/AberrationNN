@@ -3,6 +3,7 @@ import torch
 import os
 import torch.nn.functional as F
 
+
 def map01(mat):
     return (mat - mat.min()) / (mat.max() - mat.min())
 
@@ -14,12 +15,12 @@ class Dataset:
     target: phase map image 512x512/downsamping float32
     """
 
-    def __init__(self, data_dir, filestart=0, filenum=120, downsampling= False):
+    def __init__(self, data_dir, filestart=0, filenum=120, downsampling=False):
         self.data_dir = data_dir
         # folder name + index number 000-099     
-        self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart+filenum]] for j in [*range(100)]]
+        self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
+                    [*range(100)]]
         self.downsampling = downsampling
-
 
     def __getitem__(self, i):
         img_id = self.ids[i]  # folder names and index number 000-099
@@ -34,12 +35,12 @@ class Dataset:
         path = self.data_dir + img_id[:6] + '/ronchi_target_stack.npz'
         image_o = np.load(path)['overfocus'][int(img_id[6:])]
         image_d = np.load(path)['defocus'][int(img_id[6:])]
-        image_o = torch.as_tensor(map01(image_o),dtype=torch.float32)
-        image_d = torch.as_tensor(map01(image_d),dtype=torch.float32)
+        image_o = torch.as_tensor(map01(image_o), dtype=torch.float32)
+        image_d = torch.as_tensor(map01(image_d), dtype=torch.float32)
         if self.downsampling:
-            newshape = (int(image_o.shape[0]/self.downsampling), int(image_o.shape[1]/self.downsampling))
-            image_o = F.interpolate(image_o[None, None, ...],newshape)[0,0]
-            image_d = F.interpolate(image_d[None, None, ...],newshape)[0,0]
+            newshape = (int(image_o.shape[0] / self.downsampling), int(image_o.shape[1] / self.downsampling))
+            image_o = F.interpolate(image_o[None, None, ...], newshape)[0, 0]
+            image_d = F.interpolate(image_d[None, None, ...], newshape)[0, 0]
 
         FFT = torch.fft.fft2(image_o)
         FFT = torch.abs(torch.fft.fftshift(FFT))
@@ -51,9 +52,9 @@ class Dataset:
     def get_target(self, img_id):
         path = self.data_dir + img_id[:6] + '/ronchi_target_stack.npz'
         target = np.load(path)['phasemap'][int(img_id[6:])]
-        target = torch.as_tensor(target,dtype=torch.float32)
+        target = torch.as_tensor(target, dtype=torch.float32)
         if self.downsampling:
-            newshape = (int(target.shape[0]/self.downsampling), int(target.shape[1]/self.downsampling))
-            target = F.interpolate(target[None, None, ...],newshape)[0,0]
-    
+            newshape = (int(target.shape[0] / self.downsampling), int(target.shape[1] / self.downsampling))
+            target = F.interpolate(target[None, None, ...], newshape)[0, 0]
+
         return target
