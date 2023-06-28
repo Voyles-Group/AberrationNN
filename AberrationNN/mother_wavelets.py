@@ -1,6 +1,13 @@
 # https://github.com/LeonArcher/py_cwt2d.git
+# The argument name should be inherited from matlab : https://www.mathworks.com/help/wavelet/ref/cwtftinfo2.html
 
 import numpy as np
+
+
+def gabor(omega_x, omega_y, sigma_x=.5, sigma_y=.5, theta=0, omega_0=.5):
+    xhat = (omega_x - omega_0) * np.cos(theta) + (omega_y - omega_0) * np.sin(theta)
+    yhat = -(omega_x - omega_0) * np.sin(theta) + (omega_y - omega_0) * np.cos(theta)
+    return 1/sigma_x/sigma_y * np.exp(-np.pi * xhat**2 / sigma_x**2 + yhat**2 / sigma_y**2)
 
 
 def morlet(omega_x, omega_y, epsilon=1, sigma=1, omega_0=2):
@@ -51,5 +58,6 @@ wavelets = dict(
     gaus_2=gaus_2,
     gaus_3=gaus_3,
     cauchy=cauchy,
-    dog=dog
+    dog=dog,
+    gabor=gabor,
 )

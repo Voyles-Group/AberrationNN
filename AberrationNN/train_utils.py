@@ -20,6 +20,10 @@ class Parameters:
         :param dropput:
         :param batchsize:
         :param print_freq:
+        :param epochs_cycle_1: lr cool down first step start epoch
+        :param epochs_cycle: step width
+        :param epochs_ramp: warmup ramp length and cool down step smoothness, better to no bigger than epochs_cycle
+        :param lr_fact: drop ratio of the first cool down step
 
         :param ckpt_path: directory to a folder without /
         :param result_path: directory to a folder without /
