@@ -85,15 +85,16 @@ class FFTDataset:
     def get_image(self, img_id):
         path = self.data_dir + img_id[:6] + '/input_target.npz'
         image = np.load(path)['input'][int(img_id[6:])]
-        image = torch.as_tensor(image, dtype=torch.float32)
         image = torch.as_tensor(map01(image), dtype=torch.float32)
 
-        input_cov = np.load(path)['input_semicov']
-        input_cov = (input_cov - 15) / (35 - 15)  # Normalize the semi-cov angle wrt total range 15-35 mrad
+        value = np.load(path)['input_semicov']
+        input_cov = torch.zeros((1,), dtype=torch.float32)
+        input_cov[0] = (value - 15) / (35 - 15)  # Normalize the semi-cov angle wrt total range 15-35 mrad
+
         return image, input_cov  # return dimension [C, H, W] [32,64,32]
 
     def get_target(self, img_id):
         path = self.data_dir + img_id[:6] + '/input_target.npz'
         target = np.load(path)['target'][int(img_id[6:])]
-        target = torch.as_tensor(target, dtype=torch.float32)
+        target = torch.as_tensor(target[None, ...], dtype=torch.float32)
         return target
