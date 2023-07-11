@@ -136,7 +136,7 @@ class WFTResNetFull(nn.Module):
             self.dense1 = nn.Linear(first_inputchannels * 16 * bottleneck_size, first_inputchannels * bottleneck_size)
             self.dense2 = nn.Linear(first_inputchannels * bottleneck_size, bottleneck_size * 16)
             if self.first_order_only:
-                self.dense3 = nn.Linear(1 + bottleneck_size * 16, 3)
+                self.dense3 = nn.Linear(1 + bottleneck_size * 16, 4)
             else:
                 self.dense3 = nn.Linear(1 + bottleneck_size * 16, 9)
         elif self.dense_layer == 4:
@@ -146,7 +146,7 @@ class WFTResNetFull(nn.Module):
             self.dense3 = nn.Linear(first_inputchannels * bottleneck_size, bottleneck_size * 16)
 
             if self.first_order_only:
-                self.dense4 = nn.Linear(1 + bottleneck_size * 16, 3)
+                self.dense4 = nn.Linear(1 + bottleneck_size * 16, 4)
             else:
                 self.dense4 = nn.Linear(1 + bottleneck_size * 16, 9)
         else:

@@ -99,5 +99,5 @@ class FFTDataset:
         target = np.load(path)['target'][int(img_id[6:])]
         target = torch.as_tensor(target, dtype=torch.float32)
         if self.first_order_only:
-            return target[:3]
+            return target[:4]
         return target
