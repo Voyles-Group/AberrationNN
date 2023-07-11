@@ -67,11 +67,12 @@ class FFTDataset:
     target: 1D tensor of 8 aberration coefficients and k sampling mrad.
     """
 
-    def __init__(self, data_dir, filestart=0, filenum=120):
+    def __init__(self, data_dir, filestart=0, filenum=120, first_order_only=False):
         self.data_dir = data_dir
         # folder name + index number 000-099
         self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
                     [*range(100)]]
+        self.first_order_only = first_order_only
 
     def __getitem__(self, i):
         img_id = self.ids[i]  # folder names and index number 000-099
@@ -96,5 +97,7 @@ class FFTDataset:
     def get_target(self, img_id):
         path = self.data_dir + img_id[:6] + '/input_target.npz'
         target = np.load(path)['target'][int(img_id[6:])]
-        target = torch.as_tensor(target[None, ...], dtype=torch.float32)
+        target = torch.as_tensor(target, dtype=torch.float32)
+        if self.first_order_only:
+            return target[:3]
         return target
