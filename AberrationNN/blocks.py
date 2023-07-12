@@ -112,14 +112,15 @@ class Contraction_Path(nn.Module):
     Output: bottleneck output and the convolution layers for skip connections, listed from shallow to deep. 
     """
 
-    def __init__(self, depth=3, n_blocks=2, first_inputchannels=32, activation=0, dropout=0.05):
+    def __init__(self, init_channel = 2, depth=3, n_blocks=2, first_inputchannels=32, activation=0, dropout=0.05):
         super(Contraction_Path, self).__init__()
+        self.init_channel = init_channel
         self.depth = depth
         self.activation = activation
         self.dropout = dropout
         self.block = nn.ModuleList()  # the normal list will not be registered correctly as submodules of the model
         # and have empty parameters.
-        channels = [4, first_inputchannels, first_inputchannels * 2, first_inputchannels * 4, first_inputchannels * 8]
+        channels = [init_channel, first_inputchannels, first_inputchannels * 2, first_inputchannels * 4, first_inputchannels * 8]
         for l in range(self.depth):
             if l == 0:
                 # floor 0 at the top

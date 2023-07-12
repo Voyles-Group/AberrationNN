@@ -15,12 +15,13 @@ class Dataset:
     target: phase map image 512x512/downsamping float32
     """
 
-    def __init__(self, data_dir, filestart=0, filenum=120, downsampling=False):
+    def __init__(self, data_dir, filestart=0, filenum=120, nimage=100, downsampling=False, FFT_channel=False):
         self.data_dir = data_dir
         # folder name + index number 000-099     
         self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
-                    [*range(100)]]
+                    [*range(nimage)]]
         self.downsampling = downsampling
+        self.FFT_channel = FFT_channel
 
     def __getitem__(self, i):
         img_id = self.ids[i]  # folder names and index number 000-099
@@ -41,13 +42,17 @@ class Dataset:
             newshape = (int(image_o.shape[0] / self.downsampling), int(image_o.shape[1] / self.downsampling))
             image_o = F.interpolate(image_o[None, None, ...], newshape)[0, 0]
             image_d = F.interpolate(image_d[None, None, ...], newshape)[0, 0]
+        if self.FFT_channel:
+            FFT = torch.fft.fft2(image_o)
+            FFT = torch.abs(torch.fft.fftshift(FFT))
+            FFT2 = torch.fft.fft2(image_d)
+            FFT2 = torch.abs(torch.fft.fftshift(FFT2))
+        if self.FFT_channel:
+            image = torch.stack((image_o, image_d, map01(FFT), map01(FFT2)))
+        else:
+            image = torch.stack((image_o, image_d))
 
-        FFT = torch.fft.fft2(image_o)
-        FFT = torch.abs(torch.fft.fftshift(FFT))
-        FFT2 = torch.fft.fft2(image_d)
-        FFT2 = torch.abs(torch.fft.fftshift(FFT2))
-        image = torch.stack((image_o, image_d, map01(FFT), map01(FFT2)))
-        return image  # return dimension [C, H, W] [4,512,512]
+        return image  # return dimension [C, H, W] [4,512,512] or [2,512, 512]
 
     def get_target(self, img_id):
         path = self.data_dir + img_id[:6] + '/ronchi_target_stack.npz'
@@ -62,6 +67,7 @@ class Dataset:
 
 class FFTDataset:
     """
+    Normalization to 0-1 of the image or image tube is included here.
     Returns:
     FFTPCA stack: ronchigram overfocus defocus pair tensor wxhx2 float32
     target: 1D tensor of 8 aberration coefficients and k sampling mrad.

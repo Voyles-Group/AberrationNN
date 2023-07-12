@@ -7,15 +7,16 @@ from AberrationNN.blocks import Standardization_Layer, Contraction_Path, Expansi
 
 class NestedUNet(nn.Module):
 
-    def __init__(self, depth=3, n_blocks=2, first_inputchannels=32, activation=0, dropout=0.05):
+    def __init__(self, init_channel=2, depth=3, n_blocks=2, first_inputchannels=32, activation=0, dropout=0.05):
         super(NestedUNet, self).__init__()
+        self.init_channel = init_channel
         self.depth = depth
         self.activation = activation
         self.dropout = dropout
 
         self.standardize = Standardization_Layer()
-        self.contraction = Contraction_Path(depth=depth, n_blocks=n_blocks, first_inputchannels=first_inputchannels,
-                                            activation=activation, dropout=dropout)
+        self.contraction = Contraction_Path(init_channel=init_channel, depth=depth, n_blocks=n_blocks,
+                                            first_inputchannels=first_inputchannels,activation=activation, dropout=dropout)
         self.expansion = Expansion_Path(depth=depth, n_blocks=n_blocks, first_inputchannels=first_inputchannels,
                                         activation=activation, dropout=dropout)
         self.final = nn.Conv2d(first_inputchannels, 1, 3, 1, padding='same')
