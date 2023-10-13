@@ -156,7 +156,8 @@ def go_train(hyperdict, dataset, device, save_ckp, save_final, **kwargs):
     d_test = torch.utils.data.DataLoader(
         dataset_test, batch_size=pms.batchsize, shuffle=False, pin_memory=True, num_workers=pool._processes - 8)
 
-    model = NestedUNet(depth=pms.depth, n_blocks=pms.n_blocks, first_inputchannels=pms.first_inputchannels,
+    model = NestedUNet(init_channel=2, depth=pms.depth, n_blocks=pms.n_blocks,
+                       first_inputchannels=pms.first_inputchannels,
                        activation=pms.activation, dropout=pms.dropput)
     ####################################
     model = nn.DataParallel(model)
@@ -173,7 +174,8 @@ def go_train(hyperdict, dataset, device, save_ckp, save_final, **kwargs):
 
     print("\ntotal time of this training: {:.1f} s".format(time.time() - since))
     if save_final and pms.result_path is not None:
-        torch.save({'state_dict': model.state_dict(), 'use_se': True}, pms.result_path + '/statedict.tar')
+        torch.save({'state_dict': trained_model.module.state_dict(), 'use_se': True}, pms.result_path + '/statedict.tar')
+        # trained_model.module.state_dict() is needed for a DataParallel model object.
         with open(pms.result_path + '/hyp.json', 'w+') as fp:
             json.dump(hyperdict, fp)
 

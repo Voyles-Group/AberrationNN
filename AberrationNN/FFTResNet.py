@@ -106,8 +106,8 @@ class FFTResNet(nn.Module):
         c4 = self.resblock4(d3)
         d4 = F.max_pool2d(c4, kernel_size=2, stride=2)
         final = self.flatten(d4)
-        final = self.dense1(final)
-        final = self.dense2(final)
+        final = F.softmax(self.dense1(final))
+        final = F.softmax(self.dense2(final)) # you didn't add activation for these intermediate layers , which is wrong
         final = torch.cat([final, cov], dim=1)
         final = self.dense3(final)
 
