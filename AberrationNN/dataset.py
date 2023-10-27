@@ -73,12 +73,13 @@ class PatchDataset:
     No k-sampling and semi-cov involved here.
     """
 
-    def __init__(self, data_dir, filestart=0, filenum=120, first_order_only=False):
+    def __init__(self, data_dir, filestart=0, filenum=120, nimage=100, first_order_only=False, normalization=True):
         self.data_dir = data_dir
         # folder name + index number 000-099
         self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
-                    [*range(100)]]
+                    [*range(nimage)]]
         self.first_order_only = first_order_only
+        self.normalization = normalization
 
     def __getitem__(self, i):
         img_id = self.ids[i]  # folder names and index number 000-099
@@ -93,8 +94,10 @@ class PatchDataset:
         path = self.data_dir + img_id[:6] + '/input_target.npz'
         image = np.load(path)['input'][int(img_id[6:])]
         image = torch.as_tensor(image, dtype=torch.float32)
-
-        return image  # return dimension [C, H, W]
+        if self.normalization:
+            return map01(image)  # return dimension [C, H, W]
+        else:
+            return image
 
     def get_target(self, img_id):
         path = self.data_dir + img_id[:6] + '/input_target.npz'
@@ -113,11 +116,11 @@ class FFTDataset:
     target: 1D tensor of 8 aberration coefficients and k sampling mrad.
     """
 
-    def __init__(self, data_dir, filestart=0, filenum=120, first_order_only=False):
+    def __init__(self, data_dir, filestart=0, filenum=120,  nimage=100,first_order_only=False):
         self.data_dir = data_dir
         # folder name + index number 000-099
         self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
-                    [*range(100)]]
+                    [*range(nimage)]]
         self.first_order_only = first_order_only
 
     def __getitem__(self, i):

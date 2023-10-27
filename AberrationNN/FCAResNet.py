@@ -64,7 +64,7 @@ class FCABlock(nn.Module):
     def __init__(self,
                  input_channels: int,
                  reduction: int,
-                 batch_norm:bool,
+                 batch_norm: bool,
                  ) -> None:
 
         super(FCABlock, self).__init__()
@@ -96,15 +96,17 @@ class FCAResNet(nn.Module):
     def __init__(self, first_inputchannels=128):
         super(FCAResNet, self).__init__()
         self.block1 = FCABlock(input_channels=first_inputchannels, reduction=16, batch_norm=True)
-        self.block2 = FCABlock(input_channels=first_inputchannels*2, reduction=16, batch_norm=True)
-        self.block3 = FCABlock(input_channels=first_inputchannels*4, reduction=16, batch_norm=True)
+        self.block2 = FCABlock(input_channels=first_inputchannels * 2, reduction=16, batch_norm=True)
+        self.block3 = FCABlock(input_channels=first_inputchannels * 4, reduction=16, batch_norm=True)
         self.cov0 = nn.Conv2d(first_inputchannels, first_inputchannels, kernel_size=3, stride=1, padding='same')
-        self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels*2, kernel_size=3, stride=1, padding='same')
-        self.cov2 = nn.Conv2d(first_inputchannels*2, first_inputchannels*4, kernel_size=3, stride=1, padding='same')
+        self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels * 2, kernel_size=3, stride=1, padding='same')
+        self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
         self.dense1 = nn.Linear(first_inputchannels * 64, first_inputchannels * 8)
         self.dense2 = nn.Linear(first_inputchannels * 8, 64)
-        self.dense3 = nn.Linear(64, 2)
+        self.dense3 = nn.Linear(64, 3)
         self.flatten = nn.Flatten()
+
+        self.cov3 = nn.Conv2d(first_inputchannels * 4, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         c1 = gelu(self.cov0(x))
@@ -118,6 +120,9 @@ class FCAResNet(nn.Module):
         c3 = gelu(self.cov2(c3))
         f3 = self.block3(self.block3(c3))
         c4 = F.max_pool2d(f3, kernel_size=2, stride=2)  # alternate avg_pool
+
+        c4 = gelu(self.cov3(c4))
+        f4 = self.block3(self.block3(c4))
 
         final = self.flatten(c4)
         final = gelu(self.dense1(final))
