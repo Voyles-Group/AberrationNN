@@ -68,8 +68,10 @@ class Dataset:
 class PatchDataset:
     """
     Returns:
-    patch stack: ronchigram defocus and overfocus tensor [128,32,32]
+    patch stack: whatever images with dimension [C, H, W], e.g.[128,32,32]
     target: 1D tensor of 8 aberration coefficients. if first_order_only, return C1, a1, phia1 only.
+    first_order_only: if only returm 3 first order aberration targets
+    normalization：if apply map01 for the images.
     No k-sampling and semi-cov involved here.
     """
 
