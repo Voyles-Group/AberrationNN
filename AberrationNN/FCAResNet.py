@@ -4,6 +4,8 @@ import torch
 import math
 
 
+# all the input first dimension should be batch
+
 def gelu(x):
     cdf = 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
     return x * cdf
@@ -93,8 +95,11 @@ class FCABlock(nn.Module):
 
 
 class FCAResNet(nn.Module):
-    def __init__(self, first_inputchannels=128):
+    def __init__(self,
+                 first_inputchannels=64,
+                 skip_connection=False):
         super(FCAResNet, self).__init__()
+        self.skip_connection = skip_connection
         self.block1 = FCABlock(input_channels=first_inputchannels, reduction=16, batch_norm=True)
         self.block2 = FCABlock(input_channels=first_inputchannels * 2, reduction=16, batch_norm=True)
         self.block3 = FCABlock(input_channels=first_inputchannels * 4, reduction=16, batch_norm=True)
@@ -111,20 +116,28 @@ class FCAResNet(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         c1 = gelu(self.cov0(x))
         f1 = self.block1(self.block1(c1))
+        if self.skip_connection:
+            f1 += x
         c2 = F.max_pool2d(f1, kernel_size=2, stride=2)
 
         c2 = gelu(self.cov1(c2))
         f2 = self.block2(self.block2(c2))
+        if self.skip_connection:
+            f2 += c2
         c3 = F.max_pool2d(f2, kernel_size=2, stride=2)
 
         c3 = gelu(self.cov2(c3))
         f3 = self.block3(self.block3(c3))
+        if self.skip_connection:
+            f3 += c3
         c4 = F.max_pool2d(f3, kernel_size=2, stride=2)  # alternate avg_pool
 
         c4 = gelu(self.cov3(c4))
         f4 = self.block3(self.block3(c4))
+        if self.skip_connection:
+            f4 += c4
 
-        final = self.flatten(c4)
+        final = self.flatten(f4)
         final = gelu(self.dense1(final))
         final = gelu(self.dense2(final))
         # final = torch.cat([final, cov], dim=1)
@@ -133,3 +146,54 @@ class FCAResNet(nn.Module):
         return final
 
 
+class FCAResNetSecondOrder(nn.Module):
+    def __init__(self,
+                 first_inputchannels=64,
+                 skip_connection=False):
+        super(FCAResNetSecondOrder, self).__init__()
+        self.skip_connection = skip_connection
+        self.block1 = FCABlock(input_channels=first_inputchannels, reduction=16, batch_norm=True)
+        self.block2 = FCABlock(input_channels=first_inputchannels * 2, reduction=16, batch_norm=True)
+        self.block3 = FCABlock(input_channels=first_inputchannels * 4, reduction=16, batch_norm=True)
+        self.cov0 = nn.Conv2d(first_inputchannels, first_inputchannels, kernel_size=3, stride=1, padding='same')
+        self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels * 2, kernel_size=3, stride=1, padding='same')
+        self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
+        self.dense1 = nn.Linear(first_inputchannels * 64 + 3, first_inputchannels * 8)
+        self.dense2 = nn.Linear(first_inputchannels * 8, 64)
+        self.dense3 = nn.Linear(64, 4)
+        self.flatten = nn.Flatten()
+
+        self.cov3 = nn.Conv2d(first_inputchannels * 4, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
+
+    def forward(self, x: torch.Tensor, first: torch.Tensor) -> torch.Tensor:
+        c1 = gelu(self.cov0(x))
+        f1 = self.block1(self.block1(c1))
+        if self.skip_connection:
+            f1 += x
+        c2 = F.max_pool2d(f1, kernel_size=2, stride=2)
+
+        c2 = gelu(self.cov1(c2))
+        f2 = self.block2(self.block2(c2))
+        if self.skip_connection:
+            f2 += c2
+        c3 = F.max_pool2d(f2, kernel_size=2, stride=2)
+
+        c3 = gelu(self.cov2(c3))
+        f3 = self.block3(self.block3(c3))
+        if self.skip_connection:
+            f3 += c3
+        c4 = F.max_pool2d(f3, kernel_size=2, stride=2)  # alternate avg_pool
+
+        c4 = gelu(self.cov3(c4))
+        f4 = self.block3(self.block3(c4))
+        if self.skip_connection:
+            f4 += c4
+
+        flat = self.flatten(f4)
+        final = torch.cat([flat, first], dim=1)
+        final = gelu(self.dense1(final))
+        final = gelu(self.dense2(final))
+        # final = torch.cat([final, cov], dim=1)
+        final = self.dense3(final)
+
+        return final
