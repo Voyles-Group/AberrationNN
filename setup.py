@@ -14,9 +14,10 @@ setup(
     # keywords=[],
     install_requires=[
         "torch==2.0.1",
-        "numpy==1.22.4",
+        "numpy>=1.24.1",
         "matplotlib==3.7.1",
         "scipy==1.10.1",
+        "pandas",
     ],
 
 )

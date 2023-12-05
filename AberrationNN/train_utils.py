@@ -3,9 +3,65 @@ import glob
 import os
 import re
 import time
+import torch
 from scipy.interpolate import CubicSpline
 import matplotlib.pyplot as plt
 import numpy as np
+from torch.nn import Conv2d, ConvTranspose2d
+import subprocess
+from typing import List, Union
+import matplotlib.pyplot as plt
+
+
+def set_train_rng(seed: int = 1):
+    """
+    For reproducibility
+    """
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+
+def weights_init(module):
+    imodules = (Conv2d, ConvTranspose2d)
+    if isinstance(module, imodules):
+        torch.nn.init.xavier_uniform_(module.weight.data)
+        torch.nn.init.zeros_(module.bias)
+
+
+def plot_losses(train_loss: Union[List[float], np.ndarray],
+                test_loss: Union[List[float], np.ndarray]) -> None:
+    """
+    Plots train and test losses
+    """
+    print('Plotting training history')
+    _, ax = plt.subplots(1, 1, figsize=(6, 6))
+    ax.plot(train_loss, label='Train')
+    ax.plot(test_loss, label='Test')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('Loss')
+    ax.legend()
+    plt.show()
+
+
+def get_gpu_info(cuda_device: int) -> int:
+    """
+    Get the current GPU memory usage
+    Adapted with changes from
+    https://discuss.pytorch.org/t/access-gpu-memory-usage-in-pytorch/3192/4
+    """
+    result = subprocess.check_output(
+        [
+            'nvidia-smi', '--id=' + str(cuda_device),
+            '--query-gpu=memory.used,memory.total,utilization.gpu',
+            '--format=csv,nounits,noheader'
+        ], encoding='utf-8')
+    gpu_usage = [int(y) for y in result.split(',')]
+    return gpu_usage[0:2]
 
 
 class Parameters:

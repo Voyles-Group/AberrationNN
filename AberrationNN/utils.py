@@ -2,7 +2,6 @@ import numpy as np
 from collections import defaultdict
 from typing import Union, Dict
 
-
 # Ref https://github.com/abTEM/abTEM/blob/b2338a44c4b76dcdbe26c8a491bfba77aaca0500/abtem/transfer.py#L1127  _evaluate_from_angular_grid()
 def evaluate_aberration_polar(polaraberration: Dict, alpha: Union[float, np.ndarray], phi: Union[float, np.ndarray],
                               wavelength) -> Union[float, np.ndarray]:
