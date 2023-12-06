@@ -115,8 +115,8 @@ def fitness(data_patchsize,
           'model_skipconnection', model_skipconnection, 'model_blockN', model_blockN, 'train_batchsize',
           train_batchsize, 'train_learning_rate: {0:.1e}'.format(train_learning_rate), 'train_loss', train_loss)
 
-    dataset = Ronchi2fftDataset2nd('G:/pycharm/aberration/AberrationNN/testdata/ronchigrams/',
-                                   filestart=0, filenum=3, nimage=50, normalization=False, transform=None,
+    dataset = Ronchi2fftDataset2nd('/srv/home/jwei74/AberrationEstimation/abtem_sto100/focusstep200nm_uniform_k_cov/',
+                                   filestart=0, filenum=160, nimage=50, normalization=False, transform=None,
                                    patch=data_patchsize, imagesize=512, downsampling=2)
     # TODO: change this to concat datasets with augmentation
     ##################################################
@@ -150,12 +150,12 @@ def fitness(data_patchsize,
     return testloss_history[-1]
 
 
-test = fitness(x=default_parameters)
-
-search_result = gp_minimize(func=fitness,
-                            dimensions=dimensions,
-                            acq_func='EI', # Expected Improvement.
-                            n_calls=40,
-                            x0=default_parameters)
+# test = fitness(x=default_parameters)
+#
+# search_result = gp_minimize(func=fitness,
+#                             dimensions=dimensions,
+#                             acq_func='EI', # Expected Improvement.
+#                             n_calls=40,
+#                             x0=default_parameters)
 
 # search_result.x, search_result.fun,

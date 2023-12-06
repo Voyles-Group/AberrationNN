@@ -14,7 +14,7 @@ class Augmentation(object):
     Including random gain and dark reference
     gamma needs 0-255 data so not involved here.
     Args:
-        dark_upperbound: the max dark noise value to be added
+        dark_upperbound: the max dark noise value to be added. Skipped for now
     """
 
     def __init__(self, dark_upperbound):
@@ -22,9 +22,10 @@ class Augmentation(object):
         self.dark_upperbound = dark_upperbound
 
     def __call__(self, sample):
-        dark_ref = torch.randint(0, self.dark_upperbound, sample.shape)
-        gain_ref = torch.rand(sample.shape) * 0.4 + 0.8  # [0,1) changed to [0.8,1.2)
-        return torch.multiply(sample, gain_ref) + dark_ref
+        # dark_ref = torch.randint(0, self.dark_upperbound, sample.shape)
+        gain_ref = torch.rand(sample.shape) * 0.2 + 0.9  # [0,1) changed to [0.9,1.1)
+        # return torch.multiply(sample, gain_ref) + dark_ref
+        return torch.multiply(sample, gain_ref)
 
 
 class Dataset:
@@ -220,6 +221,90 @@ class PatchDataset2nd:
         return tar_list
 
 
+class Ronchi2fftDataset1st:
+    """
+    Default operations:
+    image: map01, downsample by 2, FFT, difference, FFT defocus patches - FFT overfocus patches
+    target: polar transformed into cartesian, all in angstroms.
+    Example:
+        dataset = Ronchi2fftDataset2nd('G:/pycharm/aberration/AberrationNN/testdata/ronchigrams/',
+        filestart = 0,filenum=3,nimage=50, normalization = False, transform=Augmentation(7))
+        a = dataset.get_target('149631001')
+    """
+
+    def __init__(self, data_dir, filestart=0, filenum=120, nimage=100, normalization=False, transform=None,
+                 patch=32, imagesize=512, downsampling=2):
+        self.data_dir = data_dir
+        # folder name + index number 000-099
+        self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
+                    [*range(nimage)]]
+        self.normalization = normalization
+        self.transform = transform
+        self.patch = patch
+        self.imagesize = imagesize
+        self.downsampling = downsampling
+
+    def __getitem__(self, i):
+        img_id = self.ids[i]  # folder names and index number 000-099
+        image = self.get_image(img_id)
+        target = self.get_target(img_id)
+        return image, target
+
+    def __len__(self):
+        return len(self.ids)
+
+    def get_image(self, img_id):
+        path = self.data_dir + img_id[:6] + '/ronchi_stack.npz'
+        image_o = np.load(path)['overfocus'][int(img_id[6:])]
+        image_d = np.load(path)['defocus'][int(img_id[6:])]
+        image_o = torch.as_tensor(image_o, dtype=torch.float32)
+        image_d = torch.as_tensor(image_d, dtype=torch.float32)
+        if self.downsampling is not None and self.downsampling > 1:
+            image_o = F.interpolate(image_o[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+        if self.downsampling is not None and self.downsampling > 1:
+            image_d = F.interpolate(image_d[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+        if self.transform:
+            image_d = self.transform(image_d)
+            image_o = self.transform(image_o)
+
+        windows = image_d.unfold(0, self.patch, self.patch)
+        windows = windows.unfold(1, self.patch, self.patch)
+        windows_fft = torch.zeros_like(windows)
+        n = int(image_d.shape[0] / self.patch)
+        for (i, j) in itertools.product(range(n), range(n)):
+            temp = torch.fft.fft2(windows[i][j])
+            temp = torch.fft.fftshift(temp)
+            windows_fft[i][j] = torch.abs(temp)
+
+        windows2 = image_o.unfold(0, self.patch, self.patch)
+        windows2 = windows2.unfold(1, self.patch, self.patch)
+        windows_fft2 = torch.zeros_like(windows2)
+        n = int(image_o.shape[0] / self.patch)
+        for (i, j) in itertools.product(range(n), range(n)):
+            temp = torch.fft.fft2(windows2[i][j])
+            temp = torch.fft.fftshift(temp)
+            windows_fft2[i][j] = torch.abs(temp)
+
+        image = windows_fft.reshape(n**2, self.patch, self.patch) - windows_fft2.reshape(n**2, self.patch, self.patch)
+
+        if self.normalization:
+            return map01(image)  # return dimension [C, H, W]
+        else:
+            return image
+
+    def get_target(self, img_id):
+        # return shape need to be [x]
+        target = pd.read_csv(self.data_dir + img_id[:6] + '/meta.csv')
+        target = target.get(['C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[int(img_id[6:])]
+        target = torch.as_tensor(target, dtype=torch.float32)  ##### important to keep same dtype
+        polar = {'C10': target[0], 'C12': target[1], 'phi12': target[2]}
+        car = polar2cartesian(polar)
+        first = [car['C10'], car['C12a'], car['C12b']]
+        first = torch.as_tensor(first,dtype=torch.float32)
+
+        return first
+
+
 class Ronchi2fftDataset2nd:
     """
     Default operations:
@@ -253,7 +338,7 @@ class Ronchi2fftDataset2nd:
         return len(self.ids)
 
     def get_image(self, img_id):
-        path = self.data_dir + img_id[:6] + '/ronchi_target_stack.npz'
+        path = self.data_dir + img_id[:6] + '/ronchi_stack.npz'
         image_o = np.load(path)['overfocus'][int(img_id[6:])]
         image_d = np.load(path)['defocus'][int(img_id[6:])]
         image_o = torch.as_tensor(image_o, dtype=torch.float32)
@@ -265,7 +350,7 @@ class Ronchi2fftDataset2nd:
         if self.transform:
             image_d = self.transform(image_d)
             image_o = self.transform(image_o)
-
+        image_d = map01(image_d)  # Important!
         windows = image_d.unfold(0, self.patch, self.patch)
         windows = windows.unfold(1, self.patch, self.patch)
         windows_fft = torch.zeros_like(windows)
@@ -275,6 +360,7 @@ class Ronchi2fftDataset2nd:
             temp = torch.fft.fftshift(temp)
             windows_fft[i][j] = torch.abs(temp)
 
+        image_o = map01(image_o)  # Important!
         windows2 = image_o.unfold(0, self.patch, self.patch)
         windows2 = windows2.unfold(1, self.patch, self.patch)
         windows_fft2 = torch.zeros_like(windows2)
@@ -284,7 +370,7 @@ class Ronchi2fftDataset2nd:
             temp = torch.fft.fftshift(temp)
             windows_fft2[i][j] = torch.abs(temp)
 
-        image = windows_fft.reshape(64, 32, 32) - windows_fft2.reshape(64, 32, 32)
+        image = windows_fft.reshape(n**2, self.patch, self.patch) - windows_fft2.reshape(n**2, self.patch, self.patch)
 
         target = pd.read_csv(self.data_dir + img_id[:6] + '/meta.csv')
         target = target.get(['C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[int(img_id[6:])]

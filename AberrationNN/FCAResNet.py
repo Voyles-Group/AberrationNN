@@ -41,6 +41,7 @@ class FCAModule(nn.Module):
 
         self.cov = nn.Conv2d(input_channels, input_channels, kernel_size=1, stride=1, padding=0)
         # Even calling cov layer, it is actually fully connected layer since the data size and kernel size
+        reduction = min(reduction, input_channels)
         self.cov2 = nn.Conv2d(input_channels, input_channels // reduction, kernel_size=1, stride=1, padding='same')
         self.cov2back = nn.Conv2d(input_channels // reduction, input_channels,
                                   kernel_size=1, stride=1, padding='same')
@@ -54,6 +55,8 @@ class FCAModule(nn.Module):
             out = torch.fft.fft2(x)
             out = torch.abs(torch.fft.fftshift(out))
             out = F.relu(self.cov(out))
+        else:
+            out = x
         # global average pooling, get a single mean value for each channel
         out = torch.mean(out, axis=(-2, -1), keepdims=True)  # axis [h,w] # this is a squeeze operation
         # this is an excitation operation with optional reduction and activation
@@ -115,7 +118,7 @@ class FCAResNet(nn.Module):
         self.skip_connection = skip_connection
         self.fca_block_n = fca_block_n
         self.if_FT = if_FT
-
+        patch = int(256/math.sqrt(first_inputchannels))
         self.block1 = FCABlock(input_channels=first_inputchannels, reduction=self.reduction, batch_norm=True,
                                if_FT=self.if_FT)
         self.block2 = FCABlock(input_channels=first_inputchannels * 2, reduction=self.reduction, batch_norm=True,
@@ -125,8 +128,8 @@ class FCAResNet(nn.Module):
         self.cov0 = nn.Conv2d(first_inputchannels, first_inputchannels, kernel_size=3, stride=1, padding='same')
         self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels * 2, kernel_size=3, stride=1, padding='same')
         self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
-        self.dense1 = nn.Linear(first_inputchannels * 64, first_inputchannels * 8)
-        self.dense2 = nn.Linear(first_inputchannels * 8, 64)
+        self.dense1 = nn.Linear(first_inputchannels * 4 * int(patch/8)**2, int(math.sqrt(first_inputchannels)) * patch *2)
+        self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * patch *2, 64)
         self.dense3 = nn.Linear(64, 3)
         self.flatten = nn.Flatten()
 
@@ -134,32 +137,35 @@ class FCAResNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         c1 = gelu(self.cov0(x))
+        keep = gelu(self.cov0(x))
         for k in range(self.fca_block_n):
             c1 = self.block1(c1)
         if self.skip_connection:
-            c1 += x
+            c1 += keep
         c2 = F.max_pool2d(c1, kernel_size=2, stride=2)
 
         d2 = gelu(self.cov1(c2))
+        keep = gelu(self.cov1(c2))
         for k in range(self.fca_block_n):
             d2 = self.block2(d2)
         if self.skip_connection:
-            d2 += c2
+            d2 += keep
         c3 = F.max_pool2d(d2, kernel_size=2, stride=2)
 
         e3 = gelu(self.cov2(c3))
+        keep = gelu(self.cov2(c3))
         for k in range(self.fca_block_n):
             e3 = self.block3(e3)
         if self.skip_connection:
-            e3 += c3
+            e3 += keep
         c4 = F.max_pool2d(e3, kernel_size=2, stride=2)  # alternate avg_pool
 
         f4 = gelu(self.cov3(c4))
+        keep = gelu(self.cov3(c4))
         for k in range(self.fca_block_n):
             f4 = self.block3(f4)
         if self.skip_connection:
-            f4 += c4
-
+            f4 += keep
         final = self.flatten(f4)
         final = gelu(self.dense1(final))
         final = gelu(self.dense2(final))
@@ -171,46 +177,61 @@ class FCAResNet(nn.Module):
 
 class FCAResNetSecondOrder(nn.Module):
     def __init__(self,
-                 first_inputchannels=64,
-                 skip_connection=False):
+                 first_inputchannels=64, reduction=16,
+                 skip_connection=False, fca_block_n=2, if_FT=True):
         super(FCAResNetSecondOrder, self).__init__()
+        self.reduction = reduction
         self.skip_connection = skip_connection
-        self.block1 = FCABlock(input_channels=first_inputchannels, reduction=16, batch_norm=True)
-        self.block2 = FCABlock(input_channels=first_inputchannels * 2, reduction=16, batch_norm=True)
-        self.block3 = FCABlock(input_channels=first_inputchannels * 4, reduction=16, batch_norm=True)
+        self.fca_block_n = fca_block_n
+        self.if_FT = if_FT
+        patch = int(256/math.sqrt(first_inputchannels))
+        self.block1 = FCABlock(input_channels=first_inputchannels, reduction=self.reduction, batch_norm=True,
+                               if_FT=self.if_FT)
+        self.block2 = FCABlock(input_channels=first_inputchannels * 2, reduction=self.reduction, batch_norm=True,
+                               if_FT=self.if_FT)
+        self.block3 = FCABlock(input_channels=first_inputchannels * 4, reduction=self.reduction, batch_norm=True,
+                               if_FT=self.if_FT)
         self.cov0 = nn.Conv2d(first_inputchannels, first_inputchannels, kernel_size=3, stride=1, padding='same')
         self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels * 2, kernel_size=3, stride=1, padding='same')
         self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
-        self.dense1 = nn.Linear(first_inputchannels * 64 + 3, first_inputchannels * 8)
-        self.dense2 = nn.Linear(first_inputchannels * 8, 64)
-        self.dense3 = nn.Linear(64, 4)
+        self.dense1 = nn.Linear(first_inputchannels * 4 * int(patch/8)**2 + 3, int(math.sqrt(first_inputchannels)) * patch *2)
+        self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * patch * 2, 64)
+        self.dense3 = nn.Linear(64, 3)
         self.flatten = nn.Flatten()
 
         self.cov3 = nn.Conv2d(first_inputchannels * 4, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
 
     def forward(self, x: torch.Tensor, first: torch.Tensor) -> torch.Tensor:
         c1 = gelu(self.cov0(x))
-        f1 = self.block1(self.block1(c1))
+        keep = gelu(self.cov0(x))
+        for k in range(self.fca_block_n):
+            c1 = self.block1(c1)
         if self.skip_connection:
-            f1 += x
-        c2 = F.max_pool2d(f1, kernel_size=2, stride=2)
+            c1 += keep
+        c2 = F.max_pool2d(c1, kernel_size=2, stride=2)
 
-        c2 = gelu(self.cov1(c2))
-        f2 = self.block2(self.block2(c2))
+        d2 = gelu(self.cov1(c2))
+        keep = gelu(self.cov1(c2))
+        for k in range(self.fca_block_n):
+            d2 = self.block2(d2)
         if self.skip_connection:
-            f2 += c2
-        c3 = F.max_pool2d(f2, kernel_size=2, stride=2)
+            d2 += keep
+        c3 = F.max_pool2d(d2, kernel_size=2, stride=2)
 
-        c3 = gelu(self.cov2(c3))
-        f3 = self.block3(self.block3(c3))
+        e3 = gelu(self.cov2(c3))
+        keep = gelu(self.cov2(c3))
+        for k in range(self.fca_block_n):
+            e3 = self.block3(e3)
         if self.skip_connection:
-            f3 += c3
-        c4 = F.max_pool2d(f3, kernel_size=2, stride=2)  # alternate avg_pool
+            e3 += keep
+        c4 = F.max_pool2d(e3, kernel_size=2, stride=2)  # alternate avg_pool
 
-        c4 = gelu(self.cov3(c4))
-        f4 = self.block3(self.block3(c4))
+        f4 = gelu(self.cov3(c4))
+        keep = gelu(self.cov3(c4))
+        for k in range(self.fca_block_n):
+            f4 = self.block3(f4)
         if self.skip_connection:
-            f4 += c4
+            f4 += keep
 
         flat = self.flatten(f4)
         final = torch.cat([flat, first], dim=1)
