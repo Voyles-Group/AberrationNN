@@ -267,6 +267,7 @@ class Ronchi2fftDataset1st:
             image_d = self.transform(image_d)
             image_o = self.transform(image_o)
 
+        image_d = map01(image_d)  # Important!
         windows = image_d.unfold(0, self.patch, self.patch)
         windows = windows.unfold(1, self.patch, self.patch)
         windows_fft = torch.zeros_like(windows)
@@ -276,6 +277,7 @@ class Ronchi2fftDataset1st:
             temp = torch.fft.fftshift(temp)
             windows_fft[i][j] = torch.abs(temp)
 
+        image_o = map01(image_o)  # Important!
         windows2 = image_o.unfold(0, self.patch, self.patch)
         windows2 = windows2.unfold(1, self.patch, self.patch)
         windows_fft2 = torch.zeros_like(windows2)

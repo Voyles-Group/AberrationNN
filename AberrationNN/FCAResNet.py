@@ -73,7 +73,7 @@ class FCAModule(nn.Module):
 class FCABlock(nn.Module):
     """
     Builds a Fourier channel attention block, which contains two conv layer before the FCA and concat before/after
-    FCA together. With or without BN after FCA. Repeat twice.
+    FCA together. With or without BN after FCA.
     """
 
     def __init__(self,
@@ -109,16 +109,73 @@ class FCABlock(nn.Module):
         return x
 
 
+class CoordAttentionBlock(nn.Module):
+    """
+    refered to https://github.com/houqb/CoordAttention/blob/main/coordatt.py
+    Builds a coordinate channel attention block, which contains
+    """
+
+    def __init__(self,
+                 input_channels: int,
+                 reduction: int,
+                 ) -> None:
+
+        super(FCABlock, self).__init__()
+        self.input_channels = input_channels
+        self.reducton = reduction
+
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+        # mip = max(8, inp // reduction) # in reference
+        mip = self.input_channels // self.reduction
+        self.conv1 = nn.Conv2d(self.input_channels, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.conv_h = nn.Conv2d(mip, self.input_channels, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, self.input_channels, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Defines forward pass
+        """
+        identity = x
+
+        n, c, h, w = x.size()
+        x_h = self.pool_h(x)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)
+
+        y = torch.cat([x_h, x_w], dim=2)
+        y = self.conv1(y)
+        y = self.bn1(y)
+        y = gelu(y)  # activation function to be determined
+
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+
+        a_h = self.conv_h(x_h).sigmoid()
+        a_w = self.conv_w(x_w).sigmoid()
+
+        out = identity * a_w * a_h
+
+        return out
+
+
 class FCAResNet(nn.Module):
     def __init__(self,
                  first_inputchannels=64, reduction=16,
-                 skip_connection=False, fca_block_n=2, if_FT=True):
+                 skip_connection=False, fca_block_n=2, if_FT=True, if_CAB=True):
         super(FCAResNet, self).__init__()
         self.reduction = reduction
         self.skip_connection = skip_connection
         self.fca_block_n = fca_block_n
         self.if_FT = if_FT
+        self.if_CAB = if_CAB
+
         patch = int(256/math.sqrt(first_inputchannels))
+
+        self.cab1 = CoordAttentionBlock(input_channels=first_inputchannels, reduction=self.reduction)
+        self.cab2 = CoordAttentionBlock(input_channels=first_inputchannels * 2, reduction=self.reduction)
+        self.cab3 = CoordAttentionBlock(input_channels=first_inputchannels * 4, reduction=self.reduction)
+
         self.block1 = FCABlock(input_channels=first_inputchannels, reduction=self.reduction, batch_norm=True,
                                if_FT=self.if_FT)
         self.block2 = FCABlock(input_channels=first_inputchannels * 2, reduction=self.reduction, batch_norm=True,
@@ -138,6 +195,8 @@ class FCAResNet(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         c1 = gelu(self.cov0(x))
         keep = gelu(self.cov0(x))
+        if self.if_CAB:
+            c1 = self.cab1(c1)
         for k in range(self.fca_block_n):
             c1 = self.block1(c1)
         if self.skip_connection:
@@ -146,6 +205,8 @@ class FCAResNet(nn.Module):
 
         d2 = gelu(self.cov1(c2))
         keep = gelu(self.cov1(c2))
+        if self.if_CAB:
+            d2 = self.cab2(d2)
         for k in range(self.fca_block_n):
             d2 = self.block2(d2)
         if self.skip_connection:
@@ -154,6 +215,8 @@ class FCAResNet(nn.Module):
 
         e3 = gelu(self.cov2(c3))
         keep = gelu(self.cov2(c3))
+        if self.if_CAB:
+            e3 = self.cab3(e3)
         for k in range(self.fca_block_n):
             e3 = self.block3(e3)
         if self.skip_connection:
@@ -162,6 +225,8 @@ class FCAResNet(nn.Module):
 
         f4 = gelu(self.cov3(c4))
         keep = gelu(self.cov3(c4))
+        if self.if_CAB:
+            f4 = self.cab3(f4)
         for k in range(self.fca_block_n):
             f4 = self.block3(f4)
         if self.skip_connection:
@@ -178,12 +243,18 @@ class FCAResNet(nn.Module):
 class FCAResNetSecondOrder(nn.Module):
     def __init__(self,
                  first_inputchannels=64, reduction=16,
-                 skip_connection=False, fca_block_n=2, if_FT=True):
+                 skip_connection=False, fca_block_n=2, if_FT=True, if_CAB=True):
         super(FCAResNetSecondOrder, self).__init__()
         self.reduction = reduction
         self.skip_connection = skip_connection
         self.fca_block_n = fca_block_n
         self.if_FT = if_FT
+        self.if_CAB = if_CAB
+
+        self.cab1 = CoordAttentionBlock(input_channels=first_inputchannels, reduction=self.reduction)
+        self.cab2 = CoordAttentionBlock(input_channels=first_inputchannels * 2, reduction=self.reduction)
+        self.cab3 = CoordAttentionBlock(input_channels=first_inputchannels * 4, reduction=self.reduction)
+
         patch = int(256/math.sqrt(first_inputchannels))
         self.block1 = FCABlock(input_channels=first_inputchannels, reduction=self.reduction, batch_norm=True,
                                if_FT=self.if_FT)
@@ -196,7 +267,7 @@ class FCAResNetSecondOrder(nn.Module):
         self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
         self.dense1 = nn.Linear(first_inputchannels * 4 * int(patch/8)**2 + 3, int(math.sqrt(first_inputchannels)) * patch *2)
         self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * patch * 2, 64)
-        self.dense3 = nn.Linear(64, 3)
+        self.dense3 = nn.Linear(64, 4)
         self.flatten = nn.Flatten()
 
         self.cov3 = nn.Conv2d(first_inputchannels * 4, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
@@ -204,6 +275,8 @@ class FCAResNetSecondOrder(nn.Module):
     def forward(self, x: torch.Tensor, first: torch.Tensor) -> torch.Tensor:
         c1 = gelu(self.cov0(x))
         keep = gelu(self.cov0(x))
+        if self.if_CAB:
+            c1 = self.cab1(c1)
         for k in range(self.fca_block_n):
             c1 = self.block1(c1)
         if self.skip_connection:
@@ -212,6 +285,8 @@ class FCAResNetSecondOrder(nn.Module):
 
         d2 = gelu(self.cov1(c2))
         keep = gelu(self.cov1(c2))
+        if self.if_CAB:
+            d2 = self.cab2(d2)
         for k in range(self.fca_block_n):
             d2 = self.block2(d2)
         if self.skip_connection:
@@ -220,6 +295,8 @@ class FCAResNetSecondOrder(nn.Module):
 
         e3 = gelu(self.cov2(c3))
         keep = gelu(self.cov2(c3))
+        if self.if_CAB:
+            e3 = self.cab3(e3)
         for k in range(self.fca_block_n):
             e3 = self.block3(e3)
         if self.skip_connection:
@@ -228,6 +305,8 @@ class FCAResNetSecondOrder(nn.Module):
 
         f4 = gelu(self.cov3(c4))
         keep = gelu(self.cov3(c4))
+        if self.if_CAB:
+            f4 = self.cab3(f4)
         for k in range(self.fca_block_n):
             f4 = self.block3(f4)
         if self.skip_connection:

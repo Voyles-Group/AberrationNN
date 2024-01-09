@@ -24,7 +24,8 @@ model_blockN = Categorical(categories=[2, 3, 4], name='model_blockN')
 
 train_batchsize = Categorical(categories=[16, 32, 64, 128], name='train_batchsize')
 train_learning_rate = Real(low=1e-6, high=5e-3, prior='log-uniform', name='train_learning_rate')
-train_loss = Categorical(categories=[torch.nn.SmoothL1Loss(), torch.nn.MSELoss()], name='train_loss')
+# train_loss = Categorical(categories=[torch.nn.SmoothL1Loss(), torch.nn.MSELoss()], name='train_loss')
+train_loss = Categorical(categories=['smoothl1', 'mse'], name='train_loss')
 
 dimensions = [data_patchsize,
               model_reduction,
@@ -43,8 +44,8 @@ def create_model(_data_patchsize, _model_reduction, _model_ft, _model_skipconnec
     device = torch.device('cuda')
     set_train_rng(1)
     torch.cuda.empty_cache()
-    model = FCAResNet(first_inputchannels=int(256 / _data_patchsize) ** 2, reduction=_model_reduction,
-                      skip_connection=_model_skipconnection, fca_block_n=_model_blockN, if_FT=_model_ft)
+    model = FCAResNet(first_inputchannels=int(256 / _data_patchsize) ** 2, reduction=int(_model_reduction),
+                      skip_connection=_model_skipconnection, fca_block_n=int(_model_blockN), if_FT=_model_ft)
     return model
 
 
@@ -67,7 +68,13 @@ def fit(epochs, model, data_loader_train, data_loader_test, _train_batchsize, _t
         images_train = images_train.to(device)
         targets = targets_train.to(device)
         pred = model(images_train)
-        lossfunc = _train_loss
+        if _train_loss == 'smoothl1':
+            lossfunc = torch.nn.SmoothL1Loss()
+        elif _train_loss == 'mse':
+            lossfunc = torch.nn.MSELoss()
+        else:
+            raise ValueError("Use smoothl1 or mse loss")
+
         trainloss = lossfunc(pred, targets)
         trainloss.backward()  ######!!!!
         optimizer.step()
