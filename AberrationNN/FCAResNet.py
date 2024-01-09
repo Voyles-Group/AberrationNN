@@ -120,9 +120,9 @@ class CoordAttentionBlock(nn.Module):
                  reduction: int,
                  ) -> None:
 
-        super(FCABlock, self).__init__()
+        super(CoordAttentionBlock, self).__init__()
         self.input_channels = input_channels
-        self.reducton = reduction
+        self.reduction = reduction
 
         self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
         self.pool_w = nn.AdaptiveAvgPool2d((1, None))
