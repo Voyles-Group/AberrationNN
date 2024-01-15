@@ -16,13 +16,10 @@ def gelu(x):
 
 class FCAModule(nn.Module):
     """
-    Builds a Fourier channel attention module
-    If if_FT= False, only channel attention without FT.
-    Args:
-        input_channels: Number of input channels
-        reduction: an extra conv layer reduces the number of channel weights into input_channels // reduction.
-        No reduction if it equals 1. e.g. 1,4,8,16,32,64
-        if_FT: whether used the FFT for the squeeze and excitation operation or use raw data.
+    Builds a Fourier channel attention module If if_FT= False, only channel attention without FT. Args:
+    input_channels: Number of input channels reduction: an extra conv layer reduces the number of channel weights
+    into input_channels // reduction. OK even the input_channels is even number. No reduction if it equals 1. e.g. 1,
+    4,8,16,32,64 if_FT: whether used the FFT for the squeeze and excitation operation or use raw data.
 
     Returns: weighed figure channels by DFT of each channel and mean of all pixels
 
@@ -186,7 +183,7 @@ class FCAResNet(nn.Module):
         self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels * 2, kernel_size=3, stride=1, padding='same')
         self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
         self.dense1 = nn.Linear(first_inputchannels * 4 * int(patch/8)**2, int(math.sqrt(first_inputchannels)) * patch *2)
-        self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * patch *2, 64)
+        self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * patch * 2, 64)
         self.dense3 = nn.Linear(64, 3)
         self.flatten = nn.Flatten()
 
