@@ -65,34 +65,23 @@ def get_gpu_info(cuda_device: int) -> int:
 
 
 class Parameters:
-    def __init__(self, depth, first_inputchannels, n_blocks, activation, dropput, batchsize, print_freq, learning_rate,
-                 learning_rate_0, epochs, epochs_cycle_1, epochs_cycle, epochs_ramp, warmup, cooldown, lr_fact,
+    def __init__(self, first_inputchannels, reduction, skip_connection, fca_block_n, if_FT, if_CAB, patch, imagesize, downsampling,
+                 batchsize, print_freq, learning_rate,learning_rate_0, epochs, epochs_cycle_1, epochs_cycle, epochs_ramp, warmup, cooldown, lr_fact,
                  **kwargs):
-        """
-        :param depth:
-        :param first_inputchannels:
-        :param n_blocks:
-        :param activation:  0 for nn.LeakyReLU() 1 for nn.ReLU() 2 for nn.SiLU() # swish activation
-        :param dropput:
-        :param batchsize:
-        :param print_freq:
-        :param epochs_cycle_1: lr cool down first step start epoch
-        :param epochs_cycle: step width
-        :param epochs_ramp: warmup ramp length and cool down step smoothness, better to no bigger than epochs_cycle
-        :param lr_fact: drop ratio of the first cool down step
 
-        :param ckpt_path: directory to a folder without /
-        :param result_path: directory to a folder without /
 
-        """
-        self.depth = depth
         self.first_inputchannels = first_inputchannels
-        self.n_blocks = n_blocks
-        self.activation = activation
-        self.dropput = dropput
+        self.reduction = reduction
+        self.skip_connection = skip_connection
+        self.fca_block_n = fca_block_n
+        self.if_FT = if_FT
+        self.if_CAB = if_CAB
+        self.patch = patch
+        self.imagesize = imagesize
+        self.downsampling = downsampling
         self.batchsize = batchsize
-        self.print_freq = print_freq
 
+        self.print_freq = print_freq
         self.learning_rate = learning_rate
         self.learning_rate_0 = learning_rate_0
         self.epochs = epochs

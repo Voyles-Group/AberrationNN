@@ -115,10 +115,11 @@ class Ronchi2fftDataset1st:
         if self.if_reference:
             reference = np.load(self.data_dir + img_id[:6] + '/standard_reference_d_o.npy')
             # two ronchigrams with no aberration
+            reference = torch.as_tensor(reference, dtype=torch.float32)
             fft_patches = ronchis2ffts(reference[0], reference[1], self.patch)
             nn = int(np.sqrt(image.shape[0]))  # want to remove some corner FFT patch
             fft_patch = torch.as_tensor(fft_patches[nn+1:-nn+1].mean(axis=0), dtype=torch.float32)
-            image = torch.cat([reference, fft_patch], dim=0)
+            image = torch.cat([fft_patch[None, ...], image], dim=0)
 
         if self.normalization:
             return map01(image)  # return dimension [C, H, W]
@@ -190,10 +191,11 @@ class Ronchi2fftDataset2nd:
         if self.if_reference:
             reference = np.load(self.data_dir + img_id[:6] + '/standard_reference_d_o.npy')
             # two ronchigrams with no aberration
+            reference = torch.as_tensor(reference, dtype=torch.float32)
             fft_patches = ronchis2ffts(reference[0], reference[1], self.patch)
             nn = int(np.sqrt(image.shape[0]))  # want to remove some corner FFT patch
             fft_patch = torch.as_tensor(fft_patches[nn+1:-nn+1].mean(axis=0), dtype=torch.float32)
-            image = torch.cat([reference, fft_patch], dim=0)
+            image = torch.cat([fft_patch[None, ...], image], dim=0)
 
         target = pd.read_csv(self.data_dir + img_id[:6] + '/meta.csv')
         target = target.get(['C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[int(img_id[6:])]
@@ -219,3 +221,82 @@ class Ronchi2fftDataset2nd:
         tar_list = [car['C21a'], car['C21b'], car['C23a'], car['C23b']]
         tar_list = torch.as_tensor(tar_list, dtype=torch.float32)
         return tar_list
+
+
+class Ronchi2fftDatasetAll:
+    """
+    Default operations:
+    image: map01, downsample by 2, FFT, difference, FFT defocus patches - FFT overfocus patches
+    target: polar transformed into cartesian, all in angstroms.
+    if_reference: whether concat a extra array as the reference of the lattice vector and k sampling
+    Example:
+        dataset = Ronchi2fftDatasetAll('G:/pycharm/aberration/AberrationNN/testdata/ronchigrams/',
+        filestart = 0,filenum=3,nimage=50, normalization = False, transform=Augmentation(7))
+        a = dataset.get_target('149631001')
+    """
+
+    def __init__(self, data_dir, filestart=0, filenum=120, nimage=100, normalization=False, transform=None,
+                 patch=32, imagesize=512, downsampling=2, if_reference=False):
+        self.data_dir = data_dir
+        # folder name + index number 000-099
+        self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
+                    [*range(nimage)]]
+        self.normalization = normalization
+        self.transform = transform
+        self.patch = patch
+        self.imagesize = imagesize
+        self.downsampling = downsampling
+        self.if_reference = if_reference
+
+    def __getitem__(self, i):
+        img_id = self.ids[i]  # folder names and index number 000-099
+        image = self.get_image(img_id)
+        target = self.get_target(img_id)
+        return image, target
+
+    def __len__(self):
+        return len(self.ids)
+
+    def get_image(self, img_id):
+        path = self.data_dir + img_id[:6] + '/ronchi_stack.npz'
+        image_o = np.load(path)['overfocus'][int(img_id[6:])]
+        image_d = np.load(path)['defocus'][int(img_id[6:])]
+        image_o = torch.as_tensor(image_o, dtype=torch.float32)
+        image_d = torch.as_tensor(image_d, dtype=torch.float32)
+        if self.downsampling is not None and self.downsampling > 1:
+            image_o = F.interpolate(image_o[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+        if self.downsampling is not None and self.downsampling > 1:
+            image_d = F.interpolate(image_d[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+        if self.transform:
+            image_d = self.transform(image_d)
+            image_o = self.transform(image_o)
+
+        image = ronchis2ffts(image_d, image_o, self.patch)
+
+        if self.if_reference:
+            reference = np.load(self.data_dir + img_id[:6] + '/standard_reference_d_o.npy')
+            # two ronchigrams with no aberration
+            reference = torch.as_tensor(reference, dtype=torch.float32)
+            fft_patches = ronchis2ffts(reference[0], reference[1], self.patch)
+            nn = int(np.sqrt(image.shape[0]))  # want to remove some corner FFT patch
+            fft_patch = torch.as_tensor(fft_patches[nn+1:-nn+1].mean(axis=0), dtype=torch.float32)
+            image = torch.cat([fft_patch[None, ...], image], dim=0)
+
+        if self.normalization:
+            return map01(image)  # return dimension [C, H, W]
+        else:
+            return image
+
+    def get_target(self, img_id):
+        # return shape need to be [x]
+        target = pd.read_csv(self.data_dir + img_id[:6] + '/meta.csv')
+        target = target.get(['C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[int(img_id[6:])]
+        target = torch.as_tensor(target, dtype=torch.float32)  ##### important to keep same dtype
+        polar = {'C10': target[0], 'C12': target[1], 'phi12': target[2],
+                 'C21': target[3], 'phi21': target[4], 'C23': target[5], 'phi23': target[6]}
+        car = polar2cartesian(polar)
+        allab = [car['C10'], car['C12a'], car['C12b'],
+                 car['C21a'], car['C21b'], car['C23a'], car['C23b']]
+        allab = torch.as_tensor(allab, dtype=torch.float32)
+
+        return allab

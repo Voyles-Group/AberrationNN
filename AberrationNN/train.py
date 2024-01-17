@@ -5,10 +5,9 @@ import torch
 import numpy as np
 import json, glob
 import multiprocessing
-from AberrationNN.train_utils import lr_schedule
-from AberrationNN.dataset import Dataset
-from AberrationNN.NestedUNet import NestedUNet
+from AberrationNN.train_utils import *
 from AberrationNN.train_utils import Parameters, weights_init, set_train_rng
+
 
 
 def collate_fn(batch):
@@ -45,8 +44,12 @@ def train_and_test(model, optimizer, data_loader_train, data_loader_test, device
         pred = model(images_train)
         ########################################
         lossfunc = torch.nn.SmoothL1Loss()
-        trainloss = lossfunc(pred, targets)
-        # trainloss = custom_loss(pred, targets)
+        if order == 2:
+            trainloss = lossfunc(pred[:, :3], targets[:, :3])
+        elif order == 3:
+            trainloss = lossfunc(pred[:, 3:], targets[:, 3:])
+        else:
+            trainloss = lossfunc(pred, targets)
         ########################################
 
         trainloss.backward()  ######!!!!
@@ -60,20 +63,16 @@ def train_and_test(model, optimizer, data_loader_train, data_loader_test, device
         with torch.no_grad():
             pred = model(images_test)
             ####################################
-            testloss = lossfunc(pred, targets)
-        #           testloss = custom_loss(pred, targets)
+            if order == 2:
+                testloss = lossfunc(pred[:, :3], targets[:, :3])
+            elif order == 3:
+                testloss = lossfunc(pred[:, 3:], targets[:, 3:])
+            else:
+                testloss = lossfunc(pred, targets)
         #######################################
         testloss_total.append(testloss.item())
 
         del images_train, images_test, targets  # mannually release GPU memory during training loop.
-
-        if (saveckp is not None) and hasattr(param, 'ckpt_path') and param.ckpt_path is not None:
-            check = i % saveckp
-            if check == 0 and i > (saveckp - 2):
-                checkpoint = {"model": model.state_dict(), "epochs": i,
-                              "losses": {'train_loss': trainloss, 'test_loss': testloss}}
-                ckpt_path = param.ckpt_path + "/Epoch" + "{}".format(i) + ".pt"
-                torch.save(checkpoint, ckpt_path)
 
         if i % param.print_freq == 0:
             print("Epoch{}\t".format(i), "Train Loss {:.3f}".format(trainloss.item()))
@@ -116,31 +115,50 @@ def go_train(hyperdict, dataset, device, save_ckp, save_final, **kwargs):
 
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.Adam(params)
+    wholemodel.apply(weights_init)
 
-    since = time.time()
-    trainloss, testloss, trained_model = train_and_test(model, optimizer, d_train, d_test, device, pms, save_ckp)
+    # Initialize dataset
+    dataset = Ronchi2fftDatasetAll(data_path, filestart=0, filenum=148, nimage=50, normalization=False, transform=None,
+                                   patch=pms.patch, imagesize=512, downsampling=2)
 
-    plot_losses(trainloss, testloss)
+    aug_N = 50
+    datasets = []
+    for i in range(aug_N):
+        datasets.append(Ronchi2fftDatasetAll(data_path, filestart=0, filenum=148, nimage=50, normalization=False,
+                                             patch=pms.patch, imagesize=512, downsampling=2, transform=Augmentation(2),
+                                             ))
 
-    print("\ntotal time of this training: {:.1f} s".format(time.time() - since))
-    if save_final and pms.result_path is not None:
-        torch.save({'state_dict': model.state_dict(), 'use_se': True}, pms.result_path + '/statedict.tar')
-        with open(pms.result_path + '/hyp.json', 'w+') as fp:
-            json.dump(hyperdict, fp)
+    repeat_dataset = data.ConcatDataset([dataset] + datasets)
 
-    return trained_model
+    indices = torch.randperm(len(repeat_dataset)).tolist()
 
+    dataset_train = torch.utils.data.Subset(repeat_dataset,
+                                            indices[:-int(0.4 * len(repeat_dataset))])  # swing back to 0.3
+    dataset_test = torch.utils.data.Subset(repeat_dataset, indices[-int(0.4 * len(repeat_dataset)):])
 
-class Trainer:
-    """
-  Call the class will start training. 
-  Args:
-     hyperdict
-     dataset
-     device
-     save_ckp
-     save_final
-  """
+    pool = multiprocessing.Pool()
+    # define training and validation data loaders
+    d_train = torch.utils.data.DataLoader(
+        dataset_train, batch_size=pms.batchsize, shuffle=True, pin_memory=True, num_workers=pool._processes - 8)
 
-    def __init__(self, hyperdict, dataset, device, save_ckp, save_final, **kwargs):
-        self.trained_model = go_train(hyperdict, dataset, device, save_ckp, save_final)
+    d_test = torch.utils.data.DataLoader(
+        dataset_test, batch_size=pms.batchsize, shuffle=False, pin_memory=True, num_workers=pool._processes - 8)
+
+    print('##############################START TRAINING STEP ONE######################################')
+    trainloss, testloss, trained_model1st = train_and_test(1, wholemodel, optimizer, d_train, d_test, device, pms)
+    hyperdict.save(savepath + 'hyperdict.json')
+    torch.save({'state_dict': trained_model1st.state_dict(), }, savepath + 'model_trainstep1.tar')
+
+    print('##############################START TRAINING STEP TWO######################################')
+    trainloss, testloss, trained_model2nd = train_and_test(2, trained_model1st, optimizer, d_train, d_test, device, pms)
+    torch.save({'state_dict': trained_model2nd.state_dict(), }, savepath + 'model_trainstep2.tar')
+
+    print('##############################START TRAINING STEP THREE######################################')
+    trainloss, testloss, trained_model3th = train_and_test(3, trained_model1st, optimizer, d_train, d_test, device, pms)
+    torch.save({'state_dict': trained_model3th.state_dict(), }, savepath + 'model_trainstep3.tar')
+
+    print('##############################START TRAINING STEP FOUR######################################')
+    trainloss, testloss, trained_model4th = train_and_test(4, trained_model1st, optimizer, d_train, d_test, device, pms)
+    torch.save({'state_dict': trained_model4th.state_dict(), }, savepath + 'model_trainstep4.tar')
+
+    return trained_model4th

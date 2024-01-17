@@ -167,7 +167,7 @@ class FCAResNet(nn.Module):
         self.if_FT = if_FT
         self.if_CAB = if_CAB
 
-        patch = int(256/math.sqrt(first_inputchannels))
+        patch = round(256/math.sqrt(first_inputchannels))  # when first_inputchannels includes the reference, this is no longer correct.
 
         self.cab1 = CoordAttentionBlock(input_channels=first_inputchannels, reduction=self.reduction)
         self.cab2 = CoordAttentionBlock(input_channels=first_inputchannels * 2, reduction=self.reduction)
@@ -228,6 +228,7 @@ class FCAResNet(nn.Module):
             f4 = self.block3(f4)
         if self.skip_connection:
             f4 += keep
+        print(f4.shape)
         final = self.flatten(f4)
         final = gelu(self.dense1(final))
         final = gelu(self.dense2(final))
@@ -252,7 +253,7 @@ class FCAResNetSecondOrder(nn.Module):
         self.cab2 = CoordAttentionBlock(input_channels=first_inputchannels * 2, reduction=self.reduction)
         self.cab3 = CoordAttentionBlock(input_channels=first_inputchannels * 4, reduction=self.reduction)
 
-        patch = int(256/math.sqrt(first_inputchannels))
+        patch = round(256/math.sqrt(first_inputchannels))
         self.block1 = FCABlock(input_channels=first_inputchannels, reduction=self.reduction, batch_norm=True,
                                if_FT=self.if_FT)
         self.block2 = FCABlock(input_channels=first_inputchannels * 2, reduction=self.reduction, batch_norm=True,
