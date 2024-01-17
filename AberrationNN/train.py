@@ -148,14 +148,14 @@ def AlternateTraining(data_path, device, hyperdict, savepath):
 
     # Initialize dataset
     dataset = Ronchi2fftDatasetAll(data_path, filestart=0, filenum=148, nimage=50, normalization=False, transform=None,
-                                   patch=pms.patch, imagesize=512, downsampling=2)
+                                   patch=pms.patch,  imagesize=pms.imagesize, downsampling=pms.downsampling)
 
     aug_N = 50
     datasets = []
     for i in range(aug_N):
         datasets.append(Ronchi2fftDatasetAll(data_path, filestart=0, filenum=148, nimage=50, normalization=False,
-                                             patch=pms.patch, imagesize=512, downsampling=2, transform=Augmentation(2),
-                                             ))
+                                             patch=pms.patch, imagesize=pms.imagesize, downsampling=pms.downsampling,
+                                             transform=Augmentation(2),))
 
     repeat_dataset = data.ConcatDataset([dataset] + datasets)
 
