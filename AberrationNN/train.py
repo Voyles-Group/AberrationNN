@@ -7,23 +7,59 @@ import json, glob
 import multiprocessing
 from AberrationNN.train_utils import *
 from AberrationNN.train_utils import Parameters, weights_init, set_train_rng
+from logging import raiseExceptions
+from AberrationNN.architecture import CombinedNN
+import torch.utils.data as data
+from AberrationNN.dataset import Ronchi2fftDatasetAll, Augmentation
 
+# example
+hyperdict = {'first_inputchannels': 64,
+             'reduction': 16,
+             'skip_connection': True,
+             'fca_block_n': 3,
+             'if_FT': True,
+             'if_CAB': True,
+             'patch': 32,
+             'imagesize': 512,
+             'downsampling': 2,
+             'batchsize': 32,
+             'print_freq': 40,
+             'learning_rate': 9.765625463842298e-07,  # not making any impact
+             'learning_rate_0': 0.0003,
+             'epochs': 4000,
+             'epochs_cycle_1': 100,  # first step start
+             'epochs_cycle': 2000,  # step width
+             'epochs_ramp': 20,  # higher smoother cubic spine
+             'warmup': True,
+             'cooldown': True,
+             'lr_fact': 0.99,  # for the first step
+             }
 
 
 def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-def train_and_test(model, optimizer, data_loader_train, data_loader_test, device, param, saveckp):
+def train_and_test(order, model, optimizer, data_loader_train, data_loader_test, device, param):
     """
-    here epoch is simply defined as single traing step or iters, not looping through whole trainning dataset. 
+    train the model with parts frozen and may only compute the loss of one order
     """
 
     l = lr_schedule(param)
-    l.plot()
     lr_array = l.schedule
 
-    model.apply(weights_init)
+    if order == 2:
+        model.firstordermodel.train(True)
+        model.secondordermodel.train(False)
+    elif order == 3:
+        model.firstordermodel.train(False)
+        model.secondordermodel.train(True)
+    elif order == 1 or order == 4:
+        model.firstordermodel.train(True)
+        model.secondordermodel.train(True)
+    else:
+        raiseExceptions('Train with order = 1, 2, 3, 4')
+
     trainloss_total = []
     testloss_total = []
     record = time.time()
@@ -88,32 +124,25 @@ def train_and_test(model, optimizer, data_loader_train, data_loader_test, device
     return trainloss_total, testloss_total, model
 
 
-def go_train(hyperdict, dataset, device, save_ckp, save_final, **kwargs):
+def AlternateTraining(data_path, device, hyperdict, savepath):
+    """
+    step 1: train all with loss of all coefficients
+    step 2: froze second order model part, train the first order part by only calculating loss of first three coefficients
+    step 3: froze first order model part, train the second order part by only calculating loss of second coefficients
+            (so it is using the first part to provide first order coefficients)
+    step 4: Unfroze whole model, fine tune it altogether, calculate loss of all coefficients
+
+    """
+    # Initialize model
     set_train_rng(1)
     torch.cuda.empty_cache()
     pms = Parameters(**hyperdict)
-
-    indices = torch.randperm(len(dataset)).tolist()
-    dataset_train = torch.utils.data.Subset(dataset, indices[:-int(0.4 * len(dataset))])  # swing back to 0.3
-    dataset_test = torch.utils.data.Subset(dataset, indices[-int(0.4 * len(dataset)):])
-
-    print('number of train data :', len(dataset_train))
-    print('number of test data :', len(dataset_test))
-    pool = multiprocessing.Pool()
-    # define training and validation data loaders
-    d_train = torch.utils.data.DataLoader(
-        dataset_train, batch_size=pms.batchsize, shuffle=True, pin_memory=True, num_workers=pool._processes - 8)
-
-    d_test = torch.utils.data.DataLoader(
-        dataset_test, batch_size=pms.batchsize, shuffle=False, pin_memory=True, num_workers=pool._processes - 8)
-
-    model = NestedUNet(depth=pms.depth, n_blocks=pms.n_blocks, first_inputchannels=pms.first_inputchannels,
-                       activation=pms.activation, dropout=pms.dropput)
-
-    if device == torch.device('cuda'):
-        model.cuda()
-
-    params = [p for p in model.parameters() if p.requires_grad]
+    wholemodel = CombinedNN(first_inputchannels=pms.first_inputchannels, reduction=pms.reduction,
+                            skip_connection=pms.reduction,
+                            fca_block_n=pms.fca_block_n, if_FT=pms.fca_block_n,
+                            if_CAB=pms.fca_block_n)
+    wholemodel.to(device)
+    params = [p for p in wholemodel.parameters() if p.requires_grad]
     optimizer = torch.optim.Adam(params)
     wholemodel.apply(weights_init)
 
