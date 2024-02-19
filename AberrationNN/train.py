@@ -148,14 +148,14 @@ def AlternateTraining(data_path, device, hyperdict, savepath):
 
     # Initialize dataset
     dataset = Ronchi2fftDatasetAll(data_path, filestart=0, filenum=148, nimage=50, normalization=False, transform=None,
-                                   patch=pms.patch,  imagesize=pms.imagesize, downsampling=pms.downsampling)
+                                   patch=pms.patch,  imagesize=pms.imagesize, downsampling=pms.downsampling, if_reference=pms.if_reference)
 
     aug_N = 50
     datasets = []
     for i in range(aug_N):
         datasets.append(Ronchi2fftDatasetAll(data_path, filestart=0, filenum=148, nimage=50, normalization=False,
                                              patch=pms.patch, imagesize=pms.imagesize, downsampling=pms.downsampling,
-                                             transform=Augmentation(2),))
+                                             transform=Augmentation(2),if_reference=pms.if_reference))
 
     repeat_dataset = data.ConcatDataset([dataset] + datasets)
 
@@ -175,7 +175,8 @@ def AlternateTraining(data_path, device, hyperdict, savepath):
 
     print('##############################START TRAINING STEP ONE######################################')
     trainloss, testloss, trained_model1st = train_and_test(1, wholemodel, optimizer, d_train, d_test, device, pms)
-    hyperdict.save(savepath + 'hyperdict.json')
+    with open(savepath + 'hyperdict.json', 'w') as fp:
+        json.dump(hyperdict, fp)
     torch.save({'state_dict': trained_model1st.state_dict(), }, savepath + 'model_trainstep1.tar')
 
     print('##############################START TRAINING STEP TWO######################################')

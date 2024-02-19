@@ -155,3 +155,38 @@ def polar2cartesian(polar):
     cartesian["C45a"] = 0
     cartesian["C45b"] = 0
     return cartesian
+
+
+def cartesian2polar(cartesian):
+    """
+    Convert between Cartesian and polar aberration coefficients.
+
+    Parameters
+    ----------
+    cartesian : dict
+        Mapping from Cartesian aberration symbols to their corresponding values.
+
+    Returns
+    -------
+    polar : dict
+        Mapping from polar aberration symbols to their corresponding values.
+    """
+
+    cartesian = defaultdict(lambda: 0, cartesian)
+
+    polar = dict()
+    polar["C10"] = cartesian["C10"]
+    polar["C12"] = np.sqrt(cartesian["C12a"] ** 2 + cartesian["C12b"] ** 2)
+    polar["phi12"] = np.arctan2(cartesian["C12b"], cartesian["C12a"]) / 2.0
+    #polar["phi12"] = polar["phi12"]/np.pi * 180
+    polar["C21"] = np.sqrt(cartesian["C21a"] ** 2 + cartesian["C21b"] ** 2)
+    polar["phi21"] = np.arctan2(cartesian["C21b"], cartesian["C21a"])
+    #polar["phi21"] = polar["phi21"]/np.pi * 180
+
+    polar["C23"] = np.sqrt(cartesian["C23a"] ** 2 + cartesian["C23b"] ** 2)
+    polar["phi23"] = np.arctan2(cartesian["C23b"], cartesian["C23a"]) / 3.0
+    # polar["phi23"] = polar["phi23"]/np.pi * 180
+
+    # polar["C30"] = cartesian["C30"]
+
+    return polar

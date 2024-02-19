@@ -277,6 +277,8 @@ class Ronchi2fftDatasetAll:
             reference = np.load(self.data_dir + img_id[:6] + '/standard_reference_d_o.npy')
             # two ronchigrams with no aberration
             reference = torch.as_tensor(reference, dtype=torch.float32)
+            if self.downsampling is not None and self.downsampling > 1:
+                reference = F.interpolate(reference[None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0]
             fft_patches = ronchis2ffts(reference[0], reference[1], self.patch)
             nn = int(np.sqrt(image.shape[0]))  # want to remove some corner FFT patch
             fft_patch = torch.as_tensor(fft_patches[nn+1:-nn+1].mean(axis=0), dtype=torch.float32)

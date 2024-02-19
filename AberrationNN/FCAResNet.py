@@ -228,7 +228,6 @@ class FCAResNet(nn.Module):
             f4 = self.block3(f4)
         if self.skip_connection:
             f4 += keep
-        print(f4.shape)
         final = self.flatten(f4)
         final = gelu(self.dense1(final))
         final = gelu(self.dense2(final))
