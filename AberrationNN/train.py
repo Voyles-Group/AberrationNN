@@ -11,9 +11,11 @@ from logging import raiseExceptions
 from AberrationNN.architecture import CombinedNN
 import torch.utils.data as data
 from AberrationNN.dataset import Ronchi2fftDatasetAll, Augmentation
+from torchmetrics.regression import MeanAbsolutePercentageError
 
 # example
-hyperdict = {'first_inputchannels': 64,
+hyperdict = {'loss': ['SmoothL1Loss', 'SmoothL1Loss', 'SmoothL1Loss', 'SmoothL1Loss'],# MAPE
+             'first_inputchannels': 64,
              'reduction': 16,
              'skip_connection': True,
              'fca_block_n': 3,
@@ -40,7 +42,7 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-def train_and_test(order, model, optimizer, data_loader_train, data_loader_test, device, param):
+def train_and_test(order, lossfunction, model, optimizer, data_loader_train, data_loader_test, device, param):
     """
     train the model with parts frozen and may only compute the loss of one order
     """
@@ -78,8 +80,12 @@ def train_and_test(order, model, optimizer, data_loader_train, data_loader_test,
         # print(images.is_cuda, targets .is_cuda)
 
         pred = model(images_train)
+        if lossfunction=='SmoothL1Loss':
+            lossfunc = torch.nn.SmoothL1Loss()
+        elif lossfunction=='MAPE':
+            lossfunc = MeanAbsolutePercentageError()
+
         ########################################
-        lossfunc = torch.nn.SmoothL1Loss()
         if order == 2:
             trainloss = lossfunc(pred[:, :3], targets[:, :3])
         elif order == 3:
@@ -174,21 +180,21 @@ def AlternateTraining(data_path, device, hyperdict, savepath):
         dataset_test, batch_size=pms.batchsize, shuffle=False, pin_memory=True, num_workers=pool._processes - 8)
 
     print('##############################START TRAINING STEP ONE######################################')
-    trainloss, testloss, trained_model1st = train_and_test(1, wholemodel, optimizer, d_train, d_test, device, pms)
+    trainloss, testloss, trained_model1st = train_and_test(1, pms.loss[0], wholemodel, optimizer, d_train, d_test, device, pms)
     with open(savepath + 'hyperdict.json', 'w') as fp:
         json.dump(hyperdict, fp)
     torch.save({'state_dict': trained_model1st.state_dict(), }, savepath + 'model_trainstep1.tar')
 
     print('##############################START TRAINING STEP TWO######################################')
-    trainloss, testloss, trained_model2nd = train_and_test(2, trained_model1st, optimizer, d_train, d_test, device, pms)
+    trainloss, testloss, trained_model2nd = train_and_test(2, pms.loss[1], trained_model1st, optimizer, d_train, d_test, device, pms)
     torch.save({'state_dict': trained_model2nd.state_dict(), }, savepath + 'model_trainstep2.tar')
 
     print('##############################START TRAINING STEP THREE######################################')
-    trainloss, testloss, trained_model3th = train_and_test(3, trained_model1st, optimizer, d_train, d_test, device, pms)
+    trainloss, testloss, trained_model3th = train_and_test(3, pms.loss[2], trained_model1st, optimizer, d_train, d_test, device, pms)
     torch.save({'state_dict': trained_model3th.state_dict(), }, savepath + 'model_trainstep3.tar')
 
     print('##############################START TRAINING STEP FOUR######################################')
-    trainloss, testloss, trained_model4th = train_and_test(4, trained_model1st, optimizer, d_train, d_test, device, pms)
+    trainloss, testloss, trained_model4th = train_and_test(4, pms.loss[3], trained_model1st, optimizer, d_train, d_test, device, pms)
     torch.save({'state_dict': trained_model4th.state_dict(), }, savepath + 'model_trainstep4.tar')
 
     return trained_model4th
