@@ -33,19 +33,40 @@ def weights_init(module):
         torch.nn.init.zeros_(module.bias)
 
 
-def plot_losses(train_loss: Union[List[float], np.ndarray],
-                test_loss: Union[List[float], np.ndarray]) -> None:
+# def plot_losses(train_loss: Union[List[float], np.ndarray],
+#                 test_loss: Union[List[float], np.ndarray]) -> None:
+#     """
+#     Plots train and test losses
+#     """
+#     print('Plotting training history')
+#     _, ax = plt.subplots(1, 1, figsize=(6, 6))
+#     ax.plot(train_loss, label='Train')
+#     ax.plot(test_loss, label='Test')
+#     ax.set_xlabel('Epoch')
+#     ax.set_ylabel('Loss')
+#     ax.legend()
+#     plt.show()
+
+
+def plot_losses(step, train_loss, test_loss) -> None:
     """
     Plots train and test losses
     """
     print('Plotting training history')
-    _, ax = plt.subplots(1, 1, figsize=(6, 6))
-    ax.plot(train_loss, label='Train')
-    ax.plot(test_loss, label='Test')
-    ax.set_xlabel('Epoch')
-    ax.set_ylabel('Loss')
-    ax.legend()
+    fig, ax = plt.subplots(1, 2, figsize=(6, 3))
+    ax[0].plot( [loss[0] for loss in train_loss], label='Train data')
+    ax[0].plot([loss[0] for loss in test_loss], label='Test data')
+    ax[0].set_xlabel('Epoch')
+    ax[0].set_ylabel('Loss')
+    ax[0].legend()
+
+    ax[1].plot( [loss[1] for loss in train_loss], label='Train data')
+    ax[1].plot([loss[1] for loss in test_loss], label='Test data')
+    ax[1].set_xlabel('Epoch')
+    ax[1].set_ylabel('Loss')
+    ax[1].legend()
     plt.show()
+    plt.savefig(os.getcwd()+'/step'+str(step) + 'history.png')
 
 
 def get_gpu_info(cuda_device: int) -> int:

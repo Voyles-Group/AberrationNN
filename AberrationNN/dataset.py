@@ -258,9 +258,9 @@ class Ronchi2fftDatasetAll:
         return len(self.ids)
 
     def get_image(self, img_id):
-        path = self.data_dir + img_id[:6] + '/ronchi_stack.npz'
-        image_o = np.load(path)['overfocus'][int(img_id[6:])]
-        image_d = np.load(path)['defocus'][int(img_id[6:])]
+        path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'#####
+        image_o = np.load(path)['overfocus'][int(img_id[-3:])]#####
+        image_d = np.load(path)['defocus'][int(img_id[-3:])]########
         image_o = torch.as_tensor(image_o, dtype=torch.float32)
         image_d = torch.as_tensor(image_d, dtype=torch.float32)
         if self.downsampling is not None and self.downsampling > 1:
@@ -274,11 +274,9 @@ class Ronchi2fftDatasetAll:
         image = ronchis2ffts(image_d, image_o, self.patch)
 
         if self.if_reference:
-            reference = np.load(self.data_dir + img_id[:6] + '/standard_reference_d_o.npy')
+            reference = np.load(self.data_dir + img_id[:-3] + '/standard_reference_d_o.npy') ##########
             # two ronchigrams with no aberration
             reference = torch.as_tensor(reference, dtype=torch.float32)
-            if self.downsampling is not None and self.downsampling > 1:
-                reference = F.interpolate(reference[None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0]
             fft_patches = ronchis2ffts(reference[0], reference[1], self.patch)
             nn = int(np.sqrt(image.shape[0]))  # want to remove some corner FFT patch
             fft_patch = torch.as_tensor(fft_patches[nn+1:-nn+1].mean(axis=0), dtype=torch.float32)
@@ -291,8 +289,8 @@ class Ronchi2fftDatasetAll:
 
     def get_target(self, img_id):
         # return shape need to be [x]
-        target = pd.read_csv(self.data_dir + img_id[:6] + '/meta.csv')
-        target = target.get(['C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[int(img_id[6:])]
+        target = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')###########
+        target = target.get(['C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[int(img_id[-3:])]##########
         target = torch.as_tensor(target, dtype=torch.float32)  ##### important to keep same dtype
         polar = {'C10': target[0], 'C12': target[1], 'phi12': target[2],
                  'C21': target[3], 'phi21': target[4], 'C23': target[5], 'phi23': target[6]}

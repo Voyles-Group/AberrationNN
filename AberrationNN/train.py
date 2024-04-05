@@ -12,7 +12,7 @@ from AberrationNN.architecture import CombinedNN
 import torch.utils.data as data
 from AberrationNN.dataset import Ronchi2fftDatasetAll, Augmentation
 from torchmetrics.regression import MeanAbsolutePercentageError
-
+from AberrationNN.customloss import LossDataWithChi
 # example
 hyperdict = {'loss': ['SmoothL1Loss', 'SmoothL1Loss', 'SmoothL1Loss', 'SmoothL1Loss'],# MAPE
              'first_inputchannels': 64,
@@ -42,25 +42,25 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-def train_and_test(order, lossfunction, model, optimizer, data_loader_train, data_loader_test, device, param):
+def train_and_test(step, order, model, optimizer, data_loader_train, data_loader_test, device, param, savepath):
     """
-    train the model with parts frozen and may only compute the loss of one order
+    currently this is set uo for the dataset only give 7 coefficients, without C30
     """
 
     l = lr_schedule(param)
     lr_array = l.schedule
 
-    if order == 2:
+    if step == 2:
         model.firstordermodel.train(True)
         model.secondordermodel.train(False)
-    elif order == 3:
+    elif step == 3:
         model.firstordermodel.train(False)
         model.secondordermodel.train(True)
-    elif order == 1 or order == 4:
+    elif step == 1 or step == 4:
         model.firstordermodel.train(True)
         model.secondordermodel.train(True)
     else:
-        raiseExceptions('Train with order = 1, 2, 3, 4')
+        raiseExceptions('Train with step = 1, 2, 3, 4')
 
     trainloss_total = []
     testloss_total = []
@@ -80,23 +80,26 @@ def train_and_test(order, lossfunction, model, optimizer, data_loader_train, dat
         # print(images.is_cuda, targets .is_cuda)
 
         pred = model(images_train)
-        if lossfunction=='SmoothL1Loss':
-            lossfunc = torch.nn.SmoothL1Loss()
-        elif lossfunction=='MAPE':
-            lossfunc = MeanAbsolutePercentageError()
+        lossfunc = LossDataWithChi()
+        ####################################################################
+        # something need to be modified in the future
+        k_sampling_mrad=0.07453
+        phasemap_gpts=1024
+        wavelengthA=0.025
+        k = k_sampling_mrad * 1e-3 * (torch.arange(phasemap_gpts) - phasemap_gpts / 2)
+        kxx, kyy = torch.meshgrid(*(k, k), indexing="ij")  # rad
+        kxx = kxx.to(device)
+        kyy = kyy.to(device)
+        #####################################################################
 
-        ########################################
-        if order == 2:
-            trainloss = lossfunc(pred[:, :3], targets[:, :3])
-        elif order == 3:
-            trainloss = lossfunc(pred[:, 3:], targets[:, 3:])
-        else:
-            trainloss = lossfunc(pred, targets)
-        ########################################
+        trainloss_data, trainloss_chi = lossfunc(pred, targets, kxx, kyy, order=order, train_step=step, wavelengthA = wavelengthA)
 
-        trainloss.backward()  ######!!!!
+
+        trainloss_chi.backward(retain_graph=True)  ######!!!!
+        trainloss_data.backward()  ######!!!!
+
         optimizer.step()
-        trainloss_total.append(trainloss.item())
+        trainloss_total.append((trainloss_data.item(),trainloss_chi.item()))
         ###Test###
         images_test = images_test.to(device)
         # cov_test = cov_test.to(device)
@@ -104,25 +107,23 @@ def train_and_test(order, lossfunction, model, optimizer, data_loader_train, dat
         model.eval()
         with torch.no_grad():
             pred = model(images_test)
-            ####################################
-            if order == 2:
-                testloss = lossfunc(pred[:, :3], targets[:, :3])
-            elif order == 3:
-                testloss = lossfunc(pred[:, 3:], targets[:, 3:])
-            else:
-                testloss = lossfunc(pred, targets)
-        #######################################
-        testloss_total.append(testloss.item())
+            testloss_data, testloss_chi = lossfunc(pred, targets, kxx, kyy, order=order, train_step=step, wavelengthA = wavelengthA)
+
+        testloss_total.append((testloss_data.item(),testloss_chi.item()))
 
         del images_train, images_test, targets  # mannually release GPU memory during training loop.
 
         if i % param.print_freq == 0:
-            print("Epoch{}\t".format(i), "Train Loss {:.3f}".format(trainloss.item()))
-            print("Epoch{}\t".format(i), "Test Loss {:.3f}".format(trainloss.item()),
+            print("Epoch{}\t".format(i), "Train Loss data {:.3f}".format(trainloss_data.item()), "Train Loss chi {:.3f}".format(trainloss_chi.item()),  )
+            print("Epoch{}\t".format(i), "Test Loss data {:.3f}".format(testloss_data.item()), "Test Loss {:.3f}".format(testloss_chi.item()),
                   'Cost: {}\t s.'.format(time.time() - record))
             gpu_usage = get_gpu_info(torch.cuda.current_device())
             print('GPU memory usage: {}/{}'.format(gpu_usage[0], gpu_usage[1]))
             record = time.time()
+
+            if step == 4:
+                # for the final step, save multiple models to get the best
+                torch.save({'state_dict': model.state_dict(), }, savepath + 'model_trainstep4_epoch'+str(i)+'.tar')
 
         if i == (param.epochs - 1):
             break
@@ -153,13 +154,13 @@ def AlternateTraining(data_path, device, hyperdict, savepath):
     wholemodel.apply(weights_init)
 
     # Initialize dataset
-    dataset = Ronchi2fftDatasetAll(data_path, filestart=0, filenum=148, nimage=50, normalization=False, transform=None,
+    dataset = Ronchi2fftDatasetAll(data_path, filestart=0, filenum=180, nimage=30, normalization=False, transform=None,
                                    patch=pms.patch,  imagesize=pms.imagesize, downsampling=pms.downsampling, if_reference=pms.if_reference)
 
-    aug_N = 50
+    aug_N = 50####################
     datasets = []
     for i in range(aug_N):
-        datasets.append(Ronchi2fftDatasetAll(data_path, filestart=0, filenum=148, nimage=50, normalization=False,
+        datasets.append(Ronchi2fftDatasetAll(data_path, filestart=0, filenum=180, nimage=30, normalization=False,
                                              patch=pms.patch, imagesize=pms.imagesize, downsampling=pms.downsampling,
                                              transform=Augmentation(2),if_reference=pms.if_reference))
 
@@ -180,21 +181,31 @@ def AlternateTraining(data_path, device, hyperdict, savepath):
         dataset_test, batch_size=pms.batchsize, shuffle=False, pin_memory=True, num_workers=pool._processes - 8)
 
     print('##############################START TRAINING STEP ONE######################################')
-    trainloss, testloss, trained_model1st = train_and_test(1, pms.loss[0], wholemodel, optimizer, d_train, d_test, device, pms)
+    trainloss, testloss, trained_model1st = train_and_test(1, 2, wholemodel, optimizer, d_train, d_test, device, pms, savepath)
+
     with open(savepath + 'hyperdict.json', 'w') as fp:
         json.dump(hyperdict, fp)
     torch.save({'state_dict': trained_model1st.state_dict(), }, savepath + 'model_trainstep1.tar')
+    torch.save({'train': trainloss, 'test': testloss,}, savepath + 'loss_model_trainstep1.tar')
+    plot_losses(1, trainloss, testloss)
 
     print('##############################START TRAINING STEP TWO######################################')
-    trainloss, testloss, trained_model2nd = train_and_test(2, pms.loss[1], trained_model1st, optimizer, d_train, d_test, device, pms)
+    trainloss, testloss, trained_model2nd = train_and_test(2, 1,trained_model1st, optimizer, d_train, d_test, device, pms, savepath)
     torch.save({'state_dict': trained_model2nd.state_dict(), }, savepath + 'model_trainstep2.tar')
+    torch.save({'train': trainloss, 'test': testloss,}, savepath + 'loss_model_trainstep2.tar')
+    plot_losses(2, trainloss, testloss)
 
     print('##############################START TRAINING STEP THREE######################################')
-    trainloss, testloss, trained_model3th = train_and_test(3, pms.loss[2], trained_model1st, optimizer, d_train, d_test, device, pms)
+    trainloss, testloss, trained_model3th = train_and_test(3, 2, trained_model1st, optimizer, d_train, d_test, device, pms, savepath)
     torch.save({'state_dict': trained_model3th.state_dict(), }, savepath + 'model_trainstep3.tar')
+    torch.save({'train': trainloss, 'test': testloss,}, savepath + 'loss_model_trainstep3.tar')
+    plot_losses(3, trainloss, testloss)
 
     print('##############################START TRAINING STEP FOUR######################################')
-    trainloss, testloss, trained_model4th = train_and_test(4, pms.loss[3], trained_model1st, optimizer, d_train, d_test, device, pms)
+    trainloss, testloss, trained_model4th = train_and_test(4, 2, trained_model1st, optimizer, d_train, d_test, device, pms, savepath)
     torch.save({'state_dict': trained_model4th.state_dict(), }, savepath + 'model_trainstep4.tar')
+    torch.save({'train': trainloss, 'test': testloss,}, savepath + 'loss_model_trainstep4.tar')
+
+    plot_losses(4, trainloss, testloss)
 
     return trained_model4th
