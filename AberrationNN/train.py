@@ -42,7 +42,7 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-def train_and_test(step, order, model, optimizer, data_loader_train, data_loader_test, device, param, savepath):
+def train_and_test(step, order, model, optimizer, data_loader_train, data_loader_test, device, param, savepath, check_gradient=True):
     """
     currently this is set uo for the dataset only give 7 coefficients, without C30
     """
@@ -99,7 +99,16 @@ def train_and_test(step, order, model, optimizer, data_loader_train, data_loader
         trainloss_data.backward()  ######!!!!
 
         optimizer.step()
-        trainloss_total.append((trainloss_data.item(),trainloss_chi.item()))
+        trainloss_total.append((trainloss_data.item(), trainloss_chi.item()))
+
+        ##########################################################################
+        if check_gradient==True:
+            for p,n in zip(model.parameters(), model._all_weights[0]):
+                if n[:6] == 'weight':
+                    if p.grad > 1e5 or p.grad < 1e-5:
+                        print('===========\ngradient:{}\n----------\n{}'.format(n,p.grad))
+                        break
+        ##########################################################################
         ###Test###
         images_test = images_test.to(device)
         # cov_test = cov_test.to(device)

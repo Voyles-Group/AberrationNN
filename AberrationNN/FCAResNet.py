@@ -97,7 +97,6 @@ class FCABlock(nn.Module):
         """
         residual = x
         x = gelu(self.c0(x))
-        x = gelu(self.c0(x))
         x = self.fca(x)
         x = x + residual
         if self.batch_norm:
@@ -167,35 +166,38 @@ class FCAResNet(nn.Module):
         self.if_FT = if_FT
         self.if_CAB = if_CAB
 
-        patch = round(256/math.sqrt(first_inputchannels))  # when first_inputchannels includes the reference, this is no longer correct.
+        patch = round(256/math.sqrt(first_inputchannels))  # when first_inputchannels includes the reference,the int round make it still work.
 
         self.cab1 = CoordAttentionBlock(input_channels=first_inputchannels, reduction=self.reduction)
         self.cab2 = CoordAttentionBlock(input_channels=first_inputchannels * 2, reduction=self.reduction)
         self.cab3 = CoordAttentionBlock(input_channels=first_inputchannels * 4, reduction=self.reduction)
+        self.cab4 = CoordAttentionBlock(input_channels=first_inputchannels * 4, reduction=self.reduction)
 
-        self.block1 = FCABlock(input_channels=first_inputchannels, reduction=self.reduction, batch_norm=True,
-                               if_FT=self.if_FT)
-        self.block2 = FCABlock(input_channels=first_inputchannels * 2, reduction=self.reduction, batch_norm=True,
-                               if_FT=self.if_FT)
-        self.block3 = FCABlock(input_channels=first_inputchannels * 4, reduction=self.reduction, batch_norm=True,
-                               if_FT=self.if_FT)
+        self.block1 = nn.Sequential([FCABlock(input_channels=first_inputchannels, reduction=self.reduction, batch_norm=True,
+                                              if_FT=self.if_FT)]*self.fca_block_n)
+        self.block2 = nn.Sequential([FCABlock(input_channels=first_inputchannels * 2, reduction=self.reduction, batch_norm=True,
+                                              if_FT=self.if_FT)]*self.fca_block_n)
+        self.block3 = nn.Sequential([FCABlock(input_channels=first_inputchannels * 4, reduction=self.reduction, batch_norm=True,
+                                              if_FT=self.if_FT)]*self.fca_block_n)
+        self.block4 = nn.Sequential([FCABlock(input_channels=first_inputchannels * 4, reduction=self.reduction, batch_norm=True,
+                                              if_FT=self.if_FT)]*self.fca_block_n)
         self.cov0 = nn.Conv2d(first_inputchannels, first_inputchannels, kernel_size=3, stride=1, padding='same')
         self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels * 2, kernel_size=3, stride=1, padding='same')
         self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
-        self.dense1 = nn.Linear(first_inputchannels * 4 * int(patch/8)**2, int(math.sqrt(first_inputchannels)) * patch *2)
+        self.dense1 = nn.Linear(first_inputchannels * 4 * int(patch/8)**2 + 3, int(math.sqrt(first_inputchannels)) * patch *2)
         self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * patch * 2, 64)
-        self.dense3 = nn.Linear(64, 3)
+        self.dense3 = nn.Linear(64, 3) #####################
         self.flatten = nn.Flatten()
 
         self.cov3 = nn.Conv2d(first_inputchannels * 4, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, first: torch.Tensor) -> torch.Tensor:
         c1 = gelu(self.cov0(x))
         keep = gelu(self.cov0(x))
         if self.if_CAB:
             c1 = self.cab1(c1)
-        for k in range(self.fca_block_n):
-            c1 = self.block1(c1)
+        c1 = self.block1(c1)
+
         if self.skip_connection:
             c1 += keep
         c2 = F.max_pool2d(c1, kernel_size=2, stride=2)
@@ -204,8 +206,7 @@ class FCAResNet(nn.Module):
         keep = gelu(self.cov1(c2))
         if self.if_CAB:
             d2 = self.cab2(d2)
-        for k in range(self.fca_block_n):
-            d2 = self.block2(d2)
+        d2 = self.block2(d2)
         if self.skip_connection:
             d2 += keep
         c3 = F.max_pool2d(d2, kernel_size=2, stride=2)
@@ -214,8 +215,7 @@ class FCAResNet(nn.Module):
         keep = gelu(self.cov2(c3))
         if self.if_CAB:
             e3 = self.cab3(e3)
-        for k in range(self.fca_block_n):
-            e3 = self.block3(e3)
+        e3 = self.block3(e3)
         if self.skip_connection:
             e3 += keep
         c4 = F.max_pool2d(e3, kernel_size=2, stride=2)  # alternate avg_pool
@@ -223,12 +223,13 @@ class FCAResNet(nn.Module):
         f4 = gelu(self.cov3(c4))
         keep = gelu(self.cov3(c4))
         if self.if_CAB:
-            f4 = self.cab3(f4)
-        for k in range(self.fca_block_n):
-            f4 = self.block3(f4)
+            f4 = self.cab4(f4)
+        f4 = self.block4(f4)
         if self.skip_connection:
             f4 += keep
-        final = self.flatten(f4)
+
+        flat = self.flatten(f4)
+        final = torch.cat([flat, first], dim=1)
         final = gelu(self.dense1(final))
         final = gelu(self.dense2(final))
         # final = torch.cat([final, cov], dim=1)
@@ -251,14 +252,17 @@ class FCAResNetSecondOrder(nn.Module):
         self.cab1 = CoordAttentionBlock(input_channels=first_inputchannels, reduction=self.reduction)
         self.cab2 = CoordAttentionBlock(input_channels=first_inputchannels * 2, reduction=self.reduction)
         self.cab3 = CoordAttentionBlock(input_channels=first_inputchannels * 4, reduction=self.reduction)
+        self.cab4 = CoordAttentionBlock(input_channels=first_inputchannels * 4, reduction=self.reduction)
 
         patch = round(256/math.sqrt(first_inputchannels))
-        self.block1 = FCABlock(input_channels=first_inputchannels, reduction=self.reduction, batch_norm=True,
-                               if_FT=self.if_FT)
-        self.block2 = FCABlock(input_channels=first_inputchannels * 2, reduction=self.reduction, batch_norm=True,
-                               if_FT=self.if_FT)
-        self.block3 = FCABlock(input_channels=first_inputchannels * 4, reduction=self.reduction, batch_norm=True,
-                               if_FT=self.if_FT)
+        self.block1 = nn.Sequential([FCABlock(input_channels=first_inputchannels, reduction=self.reduction, batch_norm=True,
+                               if_FT=self.if_FT)]*self.fca_block_n)
+        self.block2 = nn.Sequential([FCABlock(input_channels=first_inputchannels * 2, reduction=self.reduction, batch_norm=True,
+                                              if_FT=self.if_FT)]*self.fca_block_n)
+        self.block3 = nn.Sequential([FCABlock(input_channels=first_inputchannels * 4, reduction=self.reduction, batch_norm=True,
+                                              if_FT=self.if_FT)]*self.fca_block_n)
+        self.block4 = nn.Sequential([FCABlock(input_channels=first_inputchannels * 4, reduction=self.reduction, batch_norm=True,
+                                              if_FT=self.if_FT)]*self.fca_block_n)
         self.cov0 = nn.Conv2d(first_inputchannels, first_inputchannels, kernel_size=3, stride=1, padding='same')
         self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels * 2, kernel_size=3, stride=1, padding='same')
         self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
@@ -274,8 +278,8 @@ class FCAResNetSecondOrder(nn.Module):
         keep = gelu(self.cov0(x))
         if self.if_CAB:
             c1 = self.cab1(c1)
-        for k in range(self.fca_block_n):
-            c1 = self.block1(c1)
+        c1 = self.block1(c1)
+
         if self.skip_connection:
             c1 += keep
         c2 = F.max_pool2d(c1, kernel_size=2, stride=2)
@@ -284,8 +288,7 @@ class FCAResNetSecondOrder(nn.Module):
         keep = gelu(self.cov1(c2))
         if self.if_CAB:
             d2 = self.cab2(d2)
-        for k in range(self.fca_block_n):
-            d2 = self.block2(d2)
+        d2 = self.block2(d2)
         if self.skip_connection:
             d2 += keep
         c3 = F.max_pool2d(d2, kernel_size=2, stride=2)
@@ -294,8 +297,7 @@ class FCAResNetSecondOrder(nn.Module):
         keep = gelu(self.cov2(c3))
         if self.if_CAB:
             e3 = self.cab3(e3)
-        for k in range(self.fca_block_n):
-            e3 = self.block3(e3)
+        e3 = self.block3(e3)
         if self.skip_connection:
             e3 += keep
         c4 = F.max_pool2d(e3, kernel_size=2, stride=2)  # alternate avg_pool
@@ -303,9 +305,8 @@ class FCAResNetSecondOrder(nn.Module):
         f4 = gelu(self.cov3(c4))
         keep = gelu(self.cov3(c4))
         if self.if_CAB:
-            f4 = self.cab3(f4)
-        for k in range(self.fca_block_n):
-            f4 = self.block3(f4)
+            f4 = self.cab4(f4)
+        f4 = self.block4(f4)
         if self.skip_connection:
             f4 += keep
 
