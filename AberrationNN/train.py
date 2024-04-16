@@ -103,10 +103,10 @@ def train_and_test(step, order, model, optimizer, data_loader_train, data_loader
 
         ##########################################################################
         if check_gradient==True:
-            for p,n in zip(model.parameters(), model._all_weights[0]):
-                if n[:6] == 'weight':
-                    if p.grad > 1e5 or p.grad < 1e-5:
-                        print('===========\ngradient:{}\n----------\n{}'.format(n,p.grad))
+            for p, n in model.named_parameters():
+                if n[-6:] == 'weight':
+                    if (p.grad > 1e5).any() or (p.grad < 1e-5).any():
+                        print('===========\ngradient:{}\n----------\n{}'.format(n, p.grad))
                         break
         ##########################################################################
         ###Test###

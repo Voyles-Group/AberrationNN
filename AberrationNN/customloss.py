@@ -1,6 +1,7 @@
 from torch import nn
 import torch.nn.functional as F
 import torch
+import numpy as np
 
 
 class LossDataWithChi(nn.Module):
@@ -24,7 +25,7 @@ class LossDataWithChi(nn.Module):
 
         phasemap_gpts = kxx.shape[0]
         predicted_coeff = (predicted_coeff * 2 * np.pi / wavelengthA)[..., None, None].expand(-1, -1, phasemap_gpts, phasemap_gpts)
-        target_coeff = (target_coeff *  2 * np.pi / wavelengthA)[..., None, None].expand(-1, -1, phasemap_gpts, phasemap_gpts)
+        target_coeff = (target_coeff * 2 * np.pi / wavelengthA)[..., None, None].expand(-1, -1, phasemap_gpts, phasemap_gpts)
 
         chi_loss = 1 / 2 * (predicted_coeff[:, 0] * (kxx ** 2 + kyy ** 2) + predicted_coeff[:, 1] * (
                 kxx ** 2 - kyy ** 2) + 2 * predicted_coeff[:, 2] * kxx * kyy) \

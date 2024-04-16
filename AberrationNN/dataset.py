@@ -11,7 +11,7 @@ def map01(mat):
     return (mat - mat.min()) / (mat.max() - mat.min())
 
 
-def ronchis2ffts(image_d, image_o, patch):
+def ronchis2ffts(image_d, image_o, patch, fft_pad_factor, if_hann):
     """
     take the processed ronchigrams as input, generate FFT difference patch for the direct input for model
     :param patch: patch size
@@ -19,27 +19,59 @@ def ronchis2ffts(image_d, image_o, patch):
     :param image_d: defocus ronchigram
     :return: FFT difference patches
     """
+
+    isize = patch*fft_pad_factor
+    csize = isize
+    n = int(image_o.shape[0] / patch)
+
+    topc = isize // 2 - csize // 2
+    leftc = isize // 2 - csize // 2
+    bottomc = isize // 2 + csize // 2
+    rightc = isize // 2 + csize // 2
+
+    hanning = np.outer(np.hanning(patch), np.hanning(patch)) # A 2D hanning window with the same size as image
+
+    top = isize // 2 - patch // 2
+    left = isize // 2 - patch // 2
+    bottom = isize // 2 + patch // 2
+    right = isize // 2 + patch // 2
+
+
+    # image_d[image_d<1]=1
+    # image_o[image_o<1]=1
+    # image_d = map01(np.log(image_d))  # Important!
     image_d = map01(image_d)  # Important!
+
     windows = image_d.unfold(0, patch, patch)
     windows = windows.unfold(1, patch, patch)
-    windows_fft = torch.zeros_like(windows)
-    n = int(image_d.shape[0] / patch)
+    windows_fft = torch.zeros((n,n,csize,csize)) #############
     for (i, j) in itertools.product(range(n), range(n)):
-        temp = torch.fft.fft2(windows[i][j])
-        temp = torch.fft.fftshift(temp)
-        windows_fft[i][j] = torch.abs(temp)
-
+        tmp = torch.zeros((isize, isize))
+        img = windows[i][j]
+        if if_hann:
+            img *= hanning
+        tmp[top:bottom, left:right] = img
+        tmpft = torch.fft.fft2(tmp)
+        tmpft = torch.fft.fftshift(tmpft)
+        windows_fft[i][j] =np.abs(tmpft[topc:bottomc, leftc:rightc])
+    #####################################################################################
+    # image_o = map01(np.log(image_o))  # log does not make a difference in exp
     image_o = map01(image_o)  # Important!
+
     windows2 = image_o.unfold(0, patch, patch)
     windows2 = windows2.unfold(1, patch, patch)
-    windows_fft2 = torch.zeros_like(windows2)
-    n = int(image_o.shape[0] / patch)
+    windows_fft2 = torch.zeros((n,n,csize,csize))
     for (i, j) in itertools.product(range(n), range(n)):
-        temp = torch.fft.fft2(windows2[i][j])
-        temp = torch.fft.fftshift(temp)
-        windows_fft2[i][j] = torch.abs(temp)
+        tmp = torch.zeros((isize, isize))
+        img = windows2[i][j]
+        if if_hann:
+            img *= hanning
+        tmp[top:bottom, left:right] = img
+        tmpft = torch.fft.fft2(tmp)
+        tmpft = torch.fft.fftshift(tmpft)
+        windows_fft2[i][j] =np.abs(tmpft[topc:bottomc, leftc:rightc])
 
-    image = windows_fft.reshape(n**2, patch, patch) - windows_fft2.reshape(n**2, patch, patch)
+    image = windows_fft.reshape(n**2, csize, csize) - windows_fft2.reshape(n**2, csize, csize)
     return image
 
 
@@ -110,13 +142,13 @@ class Ronchi2fftDataset1st:
             image_d = self.transform(image_d)
             image_o = self.transform(image_o)
 
-        image = ronchis2ffts(image_d, image_o, self.patch)
+        image = ronchis2ffts(image_d, image_o, self.patch, 2, True)
 
         if self.if_reference:
             reference = np.load(self.data_dir + img_id[:6] + '/standard_reference_d_o.npy')
             # two ronchigrams with no aberration
             reference = torch.as_tensor(reference, dtype=torch.float32)
-            fft_patches = ronchis2ffts(reference[0], reference[1], self.patch)
+            fft_patches = ronchis2ffts(reference[0], reference[1], self.patch, 2, True)
             nn = int(np.sqrt(image.shape[0]))  # want to remove some corner FFT patch
             fft_patch = torch.as_tensor(fft_patches[nn+1:-nn+1].mean(axis=0), dtype=torch.float32)
             image = torch.cat([fft_patch[None, ...], image], dim=0)
@@ -186,13 +218,13 @@ class Ronchi2fftDataset2nd:
             image_d = self.transform(image_d)
             image_o = self.transform(image_o)
 
-        image = ronchis2ffts(image_d, image_o, self.patch)
+        image = ronchis2ffts(image_d, image_o, self.patch, 2, True)
 
         if self.if_reference:
             reference = np.load(self.data_dir + img_id[:6] + '/standard_reference_d_o.npy')
             # two ronchigrams with no aberration
             reference = torch.as_tensor(reference, dtype=torch.float32)
-            fft_patches = ronchis2ffts(reference[0], reference[1], self.patch)
+            fft_patches = ronchis2ffts(reference[0], reference[1], self.patch, 2, True)
             nn = int(np.sqrt(image.shape[0]))  # want to remove some corner FFT patch
             fft_patch = torch.as_tensor(fft_patches[nn+1:-nn+1].mean(axis=0), dtype=torch.float32)
             image = torch.cat([fft_patch[None, ...], image], dim=0)
@@ -271,13 +303,13 @@ class Ronchi2fftDatasetAll:
             image_d = self.transform(image_d)
             image_o = self.transform(image_o)
 
-        image = ronchis2ffts(image_d, image_o, self.patch)
+        image = ronchis2ffts(image_d, image_o, self.patch, 2, True)
 
         if self.if_reference:
             reference = np.load(self.data_dir + img_id[:-3] + '/standard_reference_d_o.npy') ##########
             # two ronchigrams with no aberration
             reference = torch.as_tensor(reference, dtype=torch.float32)
-            fft_patches = ronchis2ffts(reference[0], reference[1], self.patch)
+            fft_patches = ronchis2ffts(reference[0], reference[1], self.patch, 2, True)
             nn = int(np.sqrt(image.shape[0]))  # want to remove some corner FFT patch
             fft_patch = torch.as_tensor(fft_patches[nn+1:-nn+1].mean(axis=0), dtype=torch.float32)
             image = torch.cat([fft_patch[None, ...], image], dim=0)
