@@ -188,7 +188,7 @@ class FCAResNet(nn.Module):
         self.cov0 = nn.Conv2d(first_inputchannels, first_inputchannels, kernel_size=3, stride=1, padding='same')
         self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels * 2, kernel_size=3, stride=1, padding='same')
         self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
-        self.dense1 = nn.Linear(first_inputchannels * 4 * int(patch / 8) ** 2,
+        self.dense1 = nn.Linear(first_inputchannels * 4 * int(patch * 2 / 8) ** 2,  # the * 2 is the FFT padding factor 2.
                                 int(math.sqrt(first_inputchannels)) * patch * 2 * 2)
         self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * patch * 2 * 2, 64) # the second 2 is the FFT padding factor 2.
         self.dense3 = nn.Linear(64, 3)  #####################
@@ -269,7 +269,7 @@ class FCAResNetSecondOrder(nn.Module):
         self.cov0 = nn.Conv2d(first_inputchannels, first_inputchannels, kernel_size=3, stride=1, padding='same')
         self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels * 2, kernel_size=3, stride=1, padding='same')
         self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
-        self.dense1 = nn.Linear(first_inputchannels * 4 * int(patch / 8) ** 2 + 3,
+        self.dense1 = nn.Linear(first_inputchannels * 4 * int(patch * 2 / 8) ** 2 + 3,
                                 int(math.sqrt(first_inputchannels)) * patch * 2 * 2)
         self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * patch * 2 * 2, 64)
         self.dense3 = nn.Linear(64, 4)
