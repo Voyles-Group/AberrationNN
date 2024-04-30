@@ -165,8 +165,9 @@ class FCAResNet(nn.Module):
         self.if_FT = if_FT
         self.if_CAB = if_CAB
 
-        patch = round(256 / math.sqrt(
-            first_inputchannels))  # when first_inputchannels includes the reference,the int round make it still work.
+        # patch = round(256 / math.sqrt(first_inputchannels))
+        # when first_inputchannels includes the reference,the int round make it still work.
+        patch = 32  # assuming that I will not tune the patch size later
 
         self.cab1 = CoordAttentionBlock(input_channels=first_inputchannels, reduction=self.reduction)
         self.cab2 = CoordAttentionBlock(input_channels=first_inputchannels * 2, reduction=self.reduction)
@@ -257,7 +258,8 @@ class FCAResNetSecondOrder(nn.Module):
         self.cab3 = CoordAttentionBlock(input_channels=first_inputchannels * 4, reduction=self.reduction)
         self.cab4 = CoordAttentionBlock(input_channels=first_inputchannels * 4, reduction=self.reduction)
 
-        patch = round(256 / math.sqrt(first_inputchannels))
+        patch = 32
+
         self.block1 = nn.Sequential(*[FCABlock(input_channels=first_inputchannels, reduction=self.reduction, batch_norm=True,
                                                if_FT=self.if_FT)] * self.fca_block_n)
         self.block2 = nn.Sequential(*[FCABlock(input_channels=first_inputchannels * 2, reduction=self.reduction, batch_norm=True,

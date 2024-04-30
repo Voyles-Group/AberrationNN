@@ -42,7 +42,7 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-def train_and_test(step, order, model, optimizer, data_loader_train, data_loader_test, device, param, savepath, check_gradient=True):
+def train_and_test(step, order, model, optimizer, data_loader_train, data_loader_test, device, param, savepath, check_gradient=True, l1regularization=True):
     """
     currently this is set uo for the dataset only give 7 coefficients, without C30
     """
@@ -93,10 +93,21 @@ def train_and_test(step, order, model, optimizer, data_loader_train, data_loader
         #####################################################################
 
         trainloss_data, trainloss_chi = lossfunc(pred, targets, kxx, kyy, order=order, train_step=step, wavelengthA = wavelengthA)
+        loss = trainloss_data + trainloss_chi
 
+        # Compute L1 loss component
+        if l1regularization:
+            l1_weight = 1.0
+            l1_parameters = []
+            for parameter in model.parameters():
+                l1_parameters.append(parameter.view(-1))
+            l1 = l1_weight * torch.abs(torch.cat(l1_parameters)).sum()
+            loss += l1
 
-        trainloss_chi.backward(retain_graph=True)  ######!!!!
-        trainloss_data.backward()  ######!!!!
+        loss.backward()
+
+        # trainloss_chi.backward(retain_graph=True)  ######!!!!
+        # trainloss_data.backward()  ######!!!!
 
         optimizer.step()
         trainloss_total.append((trainloss_data.item(), trainloss_chi.item()))
@@ -118,7 +129,7 @@ def train_and_test(step, order, model, optimizer, data_loader_train, data_loader
             pred = model(images_test)
             testloss_data, testloss_chi = lossfunc(pred, targets, kxx, kyy, order=order, train_step=step, wavelengthA = wavelengthA)
 
-        testloss_total.append((testloss_data.item(),testloss_chi.item()))
+        testloss_total.append((testloss_data.item(), testloss_chi.item()))
 
         del images_train, images_test, targets  # mannually release GPU memory during training loop.
 

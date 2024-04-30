@@ -94,6 +94,98 @@ class Augmentation(object):
         return torch.multiply(sample, gain_ref)
 
 
+class RonchiTiltPairAll:
+
+    def __init__(self, data_dir, filestart=0, filenum=120, nimage=100, normalization=False, transform=None,
+                 patch=32, imagesize=512, downsampling=2, if_reference=False):
+        self.data_dir = data_dir
+        # folder name + index number 000-099
+        self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
+                    [*range(nimage)]]
+        self.normalization = normalization
+        self.transform = transform
+        self.patch = patch
+        self.imagesize = imagesize
+        self.downsampling = downsampling
+        self.if_reference = if_reference
+
+    def __getitem__(self, i):
+        img_id = self.ids[i]  # folder names and index number 000-099
+        image = self.get_image(img_id)
+        target = self.get_target(img_id)
+        return image, target
+
+    def __len__(self):
+        return len(self.ids)
+
+    def get_image(self, img_id):
+        path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'#####
+        image_x = np.load(path)['tiltx'][int(img_id[-3:])]#####
+        image_nx = np.load(path)['tiltnx'][int(img_id[-3:])]########
+        image_x = torch.as_tensor(image_x, dtype=torch.float32)
+        image_nx = torch.as_tensor(image_nx, dtype=torch.float32)
+        if self.downsampling is not None and self.downsampling > 1:
+            image_x = F.interpolate(image_x[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+            image_nx = F.interpolate(image_nx[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+        if self.transform:
+            image_x = self.transform(image_x)
+            image_nx = self.transform(image_nx)
+
+        image1 = ronchis2ffts(image_x, image_nx, self.patch, 2, True)
+
+        image_y = np.load(path)['tilty'][int(img_id[-3:])]
+        image_ny = np.load(path)['tiltny'][int(img_id[-3:])]
+        image_y = torch.as_tensor(image_y, dtype=torch.float32)
+        image_ny = torch.as_tensor(image_ny, dtype=torch.float32)
+        if self.downsampling is not None and self.downsampling > 1:
+            image_y = F.interpolate(image_y[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+            image_ny = F.interpolate(image_ny[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+        if self.transform:
+            image_y = self.transform(image_y)
+            image_ny = self.transform(image_ny)
+
+        image2 = ronchis2ffts(image_y, image_ny, self.patch, 2, True)
+
+        image = torch.cat([image1, image2], dim=0)
+
+        if self.if_reference:
+            reference = np.load(self.data_dir + img_id[:-3] + '/standard_reference.npz') ##########
+            image_x = torch.as_tensor(reference['tiltx'], dtype=torch.float32)
+            image_nx = torch.as_tensor(reference['tiltnx'], dtype=torch.float32)
+            if self.downsampling is not None and self.downsampling > 1:
+                image_x = F.interpolate(image_x[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+                image_nx = F.interpolate(image_nx[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+            image_rf1 = ronchis2ffts(image_x, image_nx, self.patch, 2, True)
+
+            image_y = torch.as_tensor(reference['tilty'], dtype=torch.float32)
+            image_ny = torch.as_tensor(reference['tiltny'], dtype=torch.float32)
+            if self.downsampling is not None and self.downsampling > 1:
+                image_y = F.interpolate(image_y[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+                image_ny = F.interpolate(image_ny[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+            image_rf2 = ronchis2ffts(image_y, image_ny, self.patch, 2, True)
+
+            # then not decided how to use the reference yet.
+
+        if self.normalization:
+            return map01(image)  # return dimension [C, H, W]
+        else:
+            return image
+
+    def get_target(self, img_id):
+        # return shape need to be [x]
+        target = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')###########
+        target = target.get(['C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[int(img_id[-3:])]##########
+        target = torch.as_tensor(target, dtype=torch.float32)  ##### important to keep same dtype
+        polar = {'C10': target[0], 'C12': target[1], 'phi12': target[2],
+                 'C21': target[3], 'phi21': target[4], 'C23': target[5], 'phi23': target[6]}
+        car = polar2cartesian(polar)
+        allab = [car['C10'], car['C12a'], car['C12b'],
+                 car['C21a'], car['C21b'], car['C23a'], car['C23b']]
+        allab = torch.as_tensor(allab, dtype=torch.float32)
+
+        return allab
+
+
 class Ronchi2fftDataset1st:
     """
     Default operations:
@@ -297,7 +389,6 @@ class Ronchi2fftDatasetAll:
         image_d = torch.as_tensor(image_d, dtype=torch.float32)
         if self.downsampling is not None and self.downsampling > 1:
             image_o = F.interpolate(image_o[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
-        if self.downsampling is not None and self.downsampling > 1:
             image_d = F.interpolate(image_d[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
         if self.transform:
             image_d = self.transform(image_d)
