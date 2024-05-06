@@ -42,7 +42,7 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-def train_and_test(step, order, model, optimizer, data_loader_train, data_loader_test, device, param, savepath, check_gradient=True, l1regularization=True):
+def train_and_test(step, order, model, optimizer, data_loader_train, data_loader_test, device, param, savepath, check_gradient=True, regularization=True):
     """
     currently this is set uo for the dataset only give 7 coefficients, without C30
     """
@@ -96,13 +96,16 @@ def train_and_test(step, order, model, optimizer, data_loader_train, data_loader
         loss = trainloss_data + trainloss_chi
 
         # Compute L1 loss component
-        if l1regularization:
-            l1_weight = 1.0
-            l1_parameters = []
+        if regularization:
+            l1_weight = 0.3
+            l2_weight = 0.7
+            reg_parameters = []
             for parameter in model.parameters():
-                l1_parameters.append(parameter.view(-1))
-            l1 = l1_weight * torch.abs(torch.cat(l1_parameters)).sum()
+                reg_parameters.append(parameter.view(-1))
+            l1 = l1_weight * torch.abs(torch.cat(reg_parameters)).sum()
+            l2 = l2_weight * torch.square(torch.cat(reg_parameters)).sum()
             loss += l1
+            loss += l2
 
         loss.backward()
 
