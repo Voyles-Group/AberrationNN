@@ -5,10 +5,16 @@ import torch.nn.functional as F
 from AberrationNN.utils import polar2cartesian
 import itertools
 import pandas as pd
+from skimage import filters
 
 
 def map01(mat):
     return (mat - mat.min()) / (mat.max() - mat.min())
+
+
+def hp_filter(img):
+    return filters.butterworth(np.array(img).astype('float32'),cutoff_frequency_ratio=0.08,
+                               order=3,high_pass=True,squared_butterworth=True,npad=0)
 
 
 def ronchis2ffts(image_d, image_o, patch, fft_pad_factor, if_hann):
@@ -97,7 +103,7 @@ class Augmentation(object):
 class RonchiTiltPairAll:
 
     def __init__(self, data_dir, filestart=0, filenum=120, nimage=100, normalization=False, transform=None,
-                 patch=32, imagesize=512, downsampling=2, if_reference=False):
+                 patch=32, imagesize=512, downsampling=2, if_HP=True, if_reference=False):
         self.data_dir = data_dir
         # folder name + index number 000-099
         self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
@@ -107,6 +113,7 @@ class RonchiTiltPairAll:
         self.patch = patch
         self.imagesize = imagesize
         self.downsampling = downsampling
+        self.if_HP = if_HP
         self.if_reference = if_reference
 
     def __getitem__(self, i):
@@ -119,9 +126,12 @@ class RonchiTiltPairAll:
         return len(self.ids)
 
     def get_image(self, img_id):
-        path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'#####
-        image_x = np.load(path)['tiltx'][int(img_id[-3:])]#####
-        image_nx = np.load(path)['tiltnx'][int(img_id[-3:])]########
+        path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
+        image_x = np.load(path)['tiltx'][int(img_id[-3:])]
+        image_nx = np.load(path)['tiltnx'][int(img_id[-3:])]
+        if self.if_HP:
+            image_x = hp_filter(image_x)
+            image_nx = hp_filter(image_nx)
         image_x = torch.as_tensor(image_x, dtype=torch.float32)
         image_nx = torch.as_tensor(image_nx, dtype=torch.float32)
         if self.downsampling is not None and self.downsampling > 1:

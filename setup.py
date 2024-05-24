@@ -18,7 +18,8 @@ setup(
         "matplotlib==3.7.1",
         "scipy==1.10.1",
         "pandas",
-        "torchmetrics"
+        "torchmetrics",
+        "scikit-image"
     ],
 
 )

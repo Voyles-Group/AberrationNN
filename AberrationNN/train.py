@@ -104,6 +104,8 @@ def train_and_test(step, order, model, optimizer, data_loader_train, data_loader
                 reg_parameters.append(parameter.view(-1))
             l1 = l1_weight * torch.abs(torch.cat(reg_parameters)).sum()
             l2 = l2_weight * torch.square(torch.cat(reg_parameters)).sum()
+            # l1 = l1_weight * torch.linalg.norm(torch.cat(reg_parameters), ord = 1)
+            # l2 = l2_weight * torch.linalg.norm(torch.cat(reg_parameters), ord = 2)**2
             loss += l1
             loss += l2
 
