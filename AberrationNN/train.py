@@ -1,18 +1,15 @@
-import math
-import sys
-import time
-import torch
-import numpy as np
-import json, glob
-import multiprocessing
+import json
 from AberrationNN.train_utils import *
 from AberrationNN.train_utils import Parameters, weights_init, set_train_rng
 from logging import raiseExceptions
 from AberrationNN.architecture import CombinedNN
 import torch.utils.data as data
-from AberrationNN.dataset import Ronchi2fftDatasetAll, Augmentation
-from torchmetrics.regression import MeanAbsolutePercentageError
+from AberrationNN.dataset import Ronchi2fftDatasetAll, Augmentation, RonchiTiltPairAll
 from AberrationNN.customloss import LossDataWithChi
+import torch.utils.data as data
+import multiprocessing
+
+
 # example
 hyperdict = {'loss': ['SmoothL1Loss', 'SmoothL1Loss', 'SmoothL1Loss', 'SmoothL1Loss'],# MAPE
              'first_inputchannels': 64,
@@ -37,15 +34,15 @@ hyperdict = {'loss': ['SmoothL1Loss', 'SmoothL1Loss', 'SmoothL1Loss', 'SmoothL1L
              'lr_fact': 0.99,  # for the first step
              }
 
-
 def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-def train_and_test(step, order, model, optimizer, data_loader_train, data_loader_test, device, param, savepath, check_gradient=True, regularization=True):
+def train_and_test(step, order, model, optimizer, data_loader_train, data_loader_test, device, param, savepath, check_gradient=True, regularization=False):
     """
     currently this is set uo for the dataset only give 7 coefficients, without C30
     """
+    stopper = EarlyStopping(patience=200)
 
     l = lr_schedule(param)
     lr_array = l.schedule
@@ -97,15 +94,13 @@ def train_and_test(step, order, model, optimizer, data_loader_train, data_loader
 
         # Compute L1 loss component
         if regularization:
-            l1_weight = 0.3
-            l2_weight = 0.7
+            l1_weight = 0.06 # 0.3
+            l2_weight = 0.14 # 0.7
             reg_parameters = []
             for parameter in model.parameters():
                 reg_parameters.append(parameter.view(-1))
             l1 = l1_weight * torch.abs(torch.cat(reg_parameters)).sum()
             l2 = l2_weight * torch.square(torch.cat(reg_parameters)).sum()
-            # l1 = l1_weight * torch.linalg.norm(torch.cat(reg_parameters), ord = 1)
-            # l2 = l2_weight * torch.linalg.norm(torch.cat(reg_parameters), ord = 2)**2
             loss += l1
             loss += l2
 
@@ -150,6 +145,9 @@ def train_and_test(step, order, model, optimizer, data_loader_train, data_loader
                 # for the final step, save multiple models to get the best
                 torch.save({'state_dict': model.state_dict(), }, savepath + 'model_trainstep4_epoch'+str(i)+'.tar')
 
+        if stopper(i, testloss_chi.item()):
+            break
+
         if i == (param.epochs - 1):
             break
 
@@ -179,15 +177,15 @@ def AlternateTraining(data_path, device, hyperdict, savepath):
     wholemodel.apply(weights_init)
 
     # Initialize dataset
-    dataset = Ronchi2fftDatasetAll(data_path, filestart=0, filenum=180, nimage=30, normalization=False, transform=None,
-                                   patch=pms.patch,  imagesize=pms.imagesize, downsampling=pms.downsampling, if_reference=pms.if_reference)
+    dataset = RonchiTiltPairAll(data_path, filestart=0, filenum=100, nimage=50, normalization=False, transform=None,
+                                patch=pms.patch,  imagesize=pms.imagesize, downsampling=pms.downsampling, if_HP = pms.if_HP, if_reference=pms.if_reference)
 
-    aug_N = 50####################
+    aug_N = 20####################
     datasets = []
     for i in range(aug_N):
-        datasets.append(Ronchi2fftDatasetAll(data_path, filestart=0, filenum=180, nimage=30, normalization=False,
-                                             patch=pms.patch, imagesize=pms.imagesize, downsampling=pms.downsampling,
-                                             transform=Augmentation(2),if_reference=pms.if_reference))
+        datasets.append(RonchiTiltPairAll(data_path, filestart=0, filenum=100, nimage=50, normalization=False,
+                                          patch=pms.patch, imagesize=pms.imagesize, downsampling=pms.downsampling,
+                                          transform=Augmentation(2),if_HP = pms.if_HP, if_reference=pms.if_reference))
 
     repeat_dataset = data.ConcatDataset([dataset] + datasets)
 
@@ -212,13 +210,13 @@ def AlternateTraining(data_path, device, hyperdict, savepath):
         json.dump(hyperdict, fp)
     torch.save({'state_dict': trained_model1st.state_dict(), }, savepath + 'model_trainstep1.tar')
     torch.save({'train': trainloss, 'test': testloss,}, savepath + 'loss_model_trainstep1.tar')
-    plot_losses(1, trainloss, testloss)
+    plot_losses(1,trainloss, testloss)
 
     print('##############################START TRAINING STEP TWO######################################')
     trainloss, testloss, trained_model2nd = train_and_test(2, 1,trained_model1st, optimizer, d_train, d_test, device, pms, savepath)
     torch.save({'state_dict': trained_model2nd.state_dict(), }, savepath + 'model_trainstep2.tar')
     torch.save({'train': trainloss, 'test': testloss,}, savepath + 'loss_model_trainstep2.tar')
-    plot_losses(2, trainloss, testloss)
+    plot_losses(2,trainloss, testloss)
 
     print('##############################START TRAINING STEP THREE######################################')
     trainloss, testloss, trained_model3th = train_and_test(3, 2, trained_model1st, optimizer, d_train, d_test, device, pms, savepath)

@@ -13,6 +13,51 @@ from typing import List, Union
 import matplotlib.pyplot as plt
 
 
+class EarlyStopping:
+    """Early stopping class that stops training when a specified number of epochs have passed without improvement."""
+
+    def __init__(self, patience=50):
+        """
+        Initialize early stopping object.
+
+        Args:
+            patience (int, optional): Number of epochs to wait after fitness stops improving before stopping.
+        """
+        # self.best_fitness = 0.0  # i.e. mAP
+        self.best_fitness = 1e5  # i.e. loss
+
+        self.best_epoch = 0
+        self.patience = patience or float("inf")  # epochs to wait after fitness stops improving to stop
+        self.possible_stop = False  # possible stop may occur next epoch
+
+    def __call__(self, epoch, fitness):
+        """
+        Check whether to stop training.
+
+        Args:
+            epoch (int): Current epoch of training
+            fitness (float): Fitness value of current epoch. Here I would use the chi_loss
+
+        Returns:
+            (bool): True if training should stop, False otherwise
+        """
+
+        if fitness <= self.best_fitness:  # >= 0 to allow for early zero-fitness stage of training
+            self.best_epoch = epoch
+            self.best_fitness = fitness
+        delta = epoch - self.best_epoch  # epochs without improvement
+        self.possible_stop = delta >= (self.patience - 1)  # possible stop may occur next epoch
+        stop = delta >= self.patience  # stop training if patience exceeded
+        if stop:
+            print(
+                f"Training stopped early as no improvement observed in last {self.patience} epochs. "
+                f"Best results observed at epoch {self.best_epoch}, best model saved\n"
+                f"To update EarlyStopping(patience={self.patience}) pass a new patience value, "
+                f"i.e. `patience=300` or use `patience=0` to disable EarlyStopping."
+            )
+        return stop
+
+
 def set_train_rng(seed: int = 1):
     """
     For reproducibility
@@ -86,7 +131,7 @@ def get_gpu_info(cuda_device: int) -> int:
 
 
 class Parameters:
-    def __init__(self, loss, first_inputchannels, reduction, skip_connection, fca_block_n, if_FT, if_CAB, patch, imagesize, downsampling,if_reference,
+    def __init__(self, loss, first_inputchannels, reduction, skip_connection, fca_block_n, if_FT, if_HP, if_CAB, patch, imagesize, downsampling,if_reference,
                  batchsize, print_freq, learning_rate,learning_rate_0, epochs, epochs_cycle_1, epochs_cycle, epochs_ramp, warmup, cooldown, lr_fact,
                  **kwargs):
 
@@ -96,6 +141,7 @@ class Parameters:
         self.skip_connection = skip_connection
         self.fca_block_n = fca_block_n
         self.if_FT = if_FT
+        self.if_HP = if_HP
         self.if_CAB = if_CAB
         self.patch = patch
         self.imagesize = imagesize

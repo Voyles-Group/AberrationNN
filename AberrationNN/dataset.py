@@ -7,6 +7,17 @@ import itertools
 import pandas as pd
 from skimage import filters
 
+# path = '/srv/home/jwei74/AberrationEstimation/BeamtiltPair10mrad_STO_defocus250nm/'
+# from pathlib import Path
+# de = []
+# ffs = os.listdir(path)
+# for f in ffs:
+#     if not Path(path+f+'/standard_reference.npz').is_file():
+#         de.append(f)
+# print(len(de))
+# # import shutil
+# # for d in de:
+# #     shutil.rmtree(path + d)
 
 def map01(mat):
     return (mat - mat.min()) / (mat.max() - mat.min())
