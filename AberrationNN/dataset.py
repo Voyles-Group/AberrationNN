@@ -7,6 +7,7 @@ import itertools
 import pandas as pd
 from skimage import filters
 
+
 # path = '/srv/home/jwei74/AberrationEstimation/BeamtiltPair10mrad_STO_defocus250nm/'
 # from pathlib import Path
 # de = []
@@ -24,8 +25,8 @@ def map01(mat):
 
 
 def hp_filter(img):
-    return filters.butterworth(np.array(img).astype('float32'),cutoff_frequency_ratio=0.08,
-                               order=3,high_pass=True,squared_butterworth=True,npad=0)
+    return filters.butterworth(np.array(img).astype('float32'), cutoff_frequency_ratio=0.08,
+                               order=3, high_pass=True, squared_butterworth=True, npad=0)
 
 
 def ronchis2ffts(image_d, image_o, patch, fft_pad_factor, if_hann):
@@ -37,7 +38,7 @@ def ronchis2ffts(image_d, image_o, patch, fft_pad_factor, if_hann):
     :return: FFT difference patches
     """
 
-    isize = patch*fft_pad_factor
+    isize = patch * fft_pad_factor
     csize = isize
     n = int(image_o.shape[0] / patch)
 
@@ -46,13 +47,12 @@ def ronchis2ffts(image_d, image_o, patch, fft_pad_factor, if_hann):
     bottomc = isize // 2 + csize // 2
     rightc = isize // 2 + csize // 2
 
-    hanning = np.outer(np.hanning(patch), np.hanning(patch)) # A 2D hanning window with the same size as image
+    hanning = np.outer(np.hanning(patch), np.hanning(patch))  # A 2D hanning window with the same size as image
 
     top = isize // 2 - patch // 2
     left = isize // 2 - patch // 2
     bottom = isize // 2 + patch // 2
     right = isize // 2 + patch // 2
-
 
     # image_d[image_d<1]=1
     # image_o[image_o<1]=1
@@ -61,7 +61,7 @@ def ronchis2ffts(image_d, image_o, patch, fft_pad_factor, if_hann):
 
     windows = image_d.unfold(0, patch, patch)
     windows = windows.unfold(1, patch, patch)
-    windows_fft = torch.zeros((n,n,csize,csize)) #############
+    windows_fft = torch.zeros((n, n, csize, csize))  #############
     for (i, j) in itertools.product(range(n), range(n)):
         tmp = torch.zeros((isize, isize))
         img = windows[i][j]
@@ -70,14 +70,14 @@ def ronchis2ffts(image_d, image_o, patch, fft_pad_factor, if_hann):
         tmp[top:bottom, left:right] = img
         tmpft = torch.fft.fft2(tmp)
         tmpft = torch.fft.fftshift(tmpft)
-        windows_fft[i][j] =np.abs(tmpft[topc:bottomc, leftc:rightc])
+        windows_fft[i][j] = np.abs(tmpft[topc:bottomc, leftc:rightc])
     #####################################################################################
     # image_o = map01(np.log(image_o))  # log does not make a difference in exp
     image_o = map01(image_o)  # Important!
 
     windows2 = image_o.unfold(0, patch, patch)
     windows2 = windows2.unfold(1, patch, patch)
-    windows_fft2 = torch.zeros((n,n,csize,csize))
+    windows_fft2 = torch.zeros((n, n, csize, csize))
     for (i, j) in itertools.product(range(n), range(n)):
         tmp = torch.zeros((isize, isize))
         img = windows2[i][j]
@@ -86,9 +86,9 @@ def ronchis2ffts(image_d, image_o, patch, fft_pad_factor, if_hann):
         tmp[top:bottom, left:right] = img
         tmpft = torch.fft.fft2(tmp)
         tmpft = torch.fft.fftshift(tmpft)
-        windows_fft2[i][j] =np.abs(tmpft[topc:bottomc, leftc:rightc])
+        windows_fft2[i][j] = np.abs(tmpft[topc:bottomc, leftc:rightc])
 
-    image = windows_fft.reshape(n**2, csize, csize) - windows_fft2.reshape(n**2, csize, csize)
+    image = windows_fft.reshape(n ** 2, csize, csize) - windows_fft2.reshape(n ** 2, csize, csize)
     return image
 
 
@@ -147,7 +147,8 @@ class RonchiTiltPairAll:
         image_nx = torch.as_tensor(image_nx, dtype=torch.float32)
         if self.downsampling is not None and self.downsampling > 1:
             image_x = F.interpolate(image_x[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
-            image_nx = F.interpolate(image_nx[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+            image_nx = F.interpolate(image_nx[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[
+                0, 0]
         if self.transform:
             image_x = self.transform(image_x)
             image_nx = self.transform(image_nx)
@@ -160,7 +161,8 @@ class RonchiTiltPairAll:
         image_ny = torch.as_tensor(image_ny, dtype=torch.float32)
         if self.downsampling is not None and self.downsampling > 1:
             image_y = F.interpolate(image_y[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
-            image_ny = F.interpolate(image_ny[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+            image_ny = F.interpolate(image_ny[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[
+                0, 0]
         if self.transform:
             image_y = self.transform(image_y)
             image_ny = self.transform(image_ny)
@@ -170,19 +172,23 @@ class RonchiTiltPairAll:
         image = torch.cat([image1, image2], dim=0)
 
         if self.if_reference:
-            reference = np.load(self.data_dir + img_id[:-3] + '/standard_reference.npz') ##########
+            reference = np.load(self.data_dir + img_id[:-3] + '/standard_reference.npz')  ##########
             image_x = torch.as_tensor(reference['tiltx'], dtype=torch.float32)
             image_nx = torch.as_tensor(reference['tiltnx'], dtype=torch.float32)
             if self.downsampling is not None and self.downsampling > 1:
-                image_x = F.interpolate(image_x[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
-                image_nx = F.interpolate(image_nx[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+                image_x = F.interpolate(image_x[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[
+                    0, 0]
+                image_nx = \
+                F.interpolate(image_nx[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
             image_rf1 = ronchis2ffts(image_x, image_nx, self.patch, 2, True)
 
             image_y = torch.as_tensor(reference['tilty'], dtype=torch.float32)
             image_ny = torch.as_tensor(reference['tiltny'], dtype=torch.float32)
             if self.downsampling is not None and self.downsampling > 1:
-                image_y = F.interpolate(image_y[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
-                image_ny = F.interpolate(image_ny[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+                image_y = F.interpolate(image_y[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[
+                    0, 0]
+                image_ny = \
+                F.interpolate(image_ny[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
             image_rf2 = ronchis2ffts(image_y, image_ny, self.patch, 2, True)
 
             # then not decided how to use the reference yet.
@@ -194,8 +200,9 @@ class RonchiTiltPairAll:
 
     def get_target(self, img_id):
         # return shape need to be [x]
-        target = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')###########
-        target = target.get(['C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[int(img_id[-3:])]##########
+        target = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')  ###########
+        target = target.get(['C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[
+            int(img_id[-3:])]  ##########
         target = torch.as_tensor(target, dtype=torch.float32)  ##### important to keep same dtype
         polar = {'C10': target[0], 'C12': target[1], 'phi12': target[2],
                  'C21': target[3], 'phi21': target[4], 'C23': target[5], 'phi23': target[6]}
@@ -263,7 +270,7 @@ class Ronchi2fftDataset1st:
             reference = torch.as_tensor(reference, dtype=torch.float32)
             fft_patches = ronchis2ffts(reference[0], reference[1], self.patch, 2, True)
             nn = int(np.sqrt(image.shape[0]))  # want to remove some corner FFT patch
-            fft_patch = torch.as_tensor(fft_patches[nn+1:-nn+1].mean(axis=0), dtype=torch.float32)
+            fft_patch = torch.as_tensor(fft_patches[nn + 1:-nn + 1].mean(axis=0), dtype=torch.float32)
             image = torch.cat([fft_patch[None, ...], image], dim=0)
 
         if self.normalization:
@@ -279,7 +286,7 @@ class Ronchi2fftDataset1st:
         polar = {'C10': target[0], 'C12': target[1], 'phi12': target[2]}
         car = polar2cartesian(polar)
         first = [car['C10'], car['C12a'], car['C12b']]
-        first = torch.as_tensor(first,dtype=torch.float32)
+        first = torch.as_tensor(first, dtype=torch.float32)
 
         return first
 
@@ -339,7 +346,7 @@ class Ronchi2fftDataset2nd:
             reference = torch.as_tensor(reference, dtype=torch.float32)
             fft_patches = ronchis2ffts(reference[0], reference[1], self.patch, 2, True)
             nn = int(np.sqrt(image.shape[0]))  # want to remove some corner FFT patch
-            fft_patch = torch.as_tensor(fft_patches[nn+1:-nn+1].mean(axis=0), dtype=torch.float32)
+            fft_patch = torch.as_tensor(fft_patches[nn + 1:-nn + 1].mean(axis=0), dtype=torch.float32)
             image = torch.cat([fft_patch[None, ...], image], dim=0)
 
         target = pd.read_csv(self.data_dir + img_id[:6] + '/meta.csv')
@@ -381,7 +388,7 @@ class Ronchi2fftDatasetAll:
     """
 
     def __init__(self, data_dir, filestart=0, filenum=120, nimage=100, normalization=False, transform=None,
-                 patch=32, imagesize=512, downsampling=2, if_reference=False):
+                 patch=32, imagesize=512, downsampling=2, if_HP=True, if_reference=False):
         self.data_dir = data_dir
         # folder name + index number 000-099
         self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
@@ -392,6 +399,7 @@ class Ronchi2fftDatasetAll:
         self.imagesize = imagesize
         self.downsampling = downsampling
         self.if_reference = if_reference
+        self.if_HP = if_HP
 
     def __getitem__(self, i):
         img_id = self.ids[i]  # folder names and index number 000-099
@@ -403,9 +411,12 @@ class Ronchi2fftDatasetAll:
         return len(self.ids)
 
     def get_image(self, img_id):
-        path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'#####
-        image_o = np.load(path)['overfocus'][int(img_id[-3:])]#####
-        image_d = np.load(path)['defocus'][int(img_id[-3:])]########
+        path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'  #####
+        image_o = np.load(path)['overfocus'][int(img_id[-3:])]  #####
+        image_d = np.load(path)['defocus'][int(img_id[-3:])]  ########
+        if self.if_HP:
+            image_o = hp_filter(image_o)
+            image_d = hp_filter(image_d)
         image_o = torch.as_tensor(image_o, dtype=torch.float32)
         image_d = torch.as_tensor(image_d, dtype=torch.float32)
         if self.downsampling is not None and self.downsampling > 1:
@@ -418,12 +429,12 @@ class Ronchi2fftDatasetAll:
         image = ronchis2ffts(image_d, image_o, self.patch, 2, True)
 
         if self.if_reference:
-            reference = np.load(self.data_dir + img_id[:-3] + '/standard_reference_d_o.npy') ##########
+            reference = np.load(self.data_dir + img_id[:-3] + '/standard_reference_d_o.npy')  ##########
             # two ronchigrams with no aberration
             reference = torch.as_tensor(reference, dtype=torch.float32)
             fft_patches = ronchis2ffts(reference[0], reference[1], self.patch, 2, True)
             nn = int(np.sqrt(image.shape[0]))  # want to remove some corner FFT patch
-            fft_patch = torch.as_tensor(fft_patches[nn+1:-nn+1].mean(axis=0), dtype=torch.float32)
+            fft_patch = torch.as_tensor(fft_patches[nn + 1:-nn + 1].mean(axis=0), dtype=torch.float32)
             image = torch.cat([fft_patch[None, ...], image], dim=0)
 
         if self.normalization:
@@ -433,8 +444,9 @@ class Ronchi2fftDatasetAll:
 
     def get_target(self, img_id):
         # return shape need to be [x]
-        target = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')###########
-        target = target.get(['C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[int(img_id[-3:])]##########
+        target = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')  ###########
+        target = target.get(['C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[
+            int(img_id[-3:])]  ##########
         target = torch.as_tensor(target, dtype=torch.float32)  ##### important to keep same dtype
         polar = {'C10': target[0], 'C12': target[1], 'phi12': target[2],
                  'C21': target[3], 'phi21': target[4], 'C23': target[5], 'phi23': target[6]}

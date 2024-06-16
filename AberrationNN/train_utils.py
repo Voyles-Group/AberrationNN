@@ -132,7 +132,7 @@ def get_gpu_info(cuda_device: int) -> int:
 
 class Parameters:
     def __init__(self, loss, first_inputchannels, reduction, skip_connection, fca_block_n, if_FT, if_HP, if_CAB, patch, imagesize, downsampling,if_reference,
-                 batchsize, print_freq, learning_rate,learning_rate_0, epochs, epochs_cycle_1, epochs_cycle, epochs_ramp, warmup, cooldown, lr_fact,
+                 batchsize, print_freq, learning_rate, learning_rate_0, epochs, epochs_cycle_1, epochs_cycle, epochs_ramp, warmup, cooldown, lr_fact,
                  **kwargs):
 
         self.loss = loss
@@ -159,8 +159,9 @@ class Parameters:
         self.cooldown = cooldown
         self.lr_fact = lr_fact
 
-        self.ckpt_path = kwargs.get('ckpt_path')
-        self.result_path = kwargs.get('result_path')
+        self.data_path = kwargs.get('data_path')
+        self.sava_path = kwargs.get('save_path')
+        self.validation_data_path = kwargs.get('validation_data_path')
 
 
 # https://github.com/ThFriedrich/airpi/blob/main/ap_training/lr_scheduler.py
