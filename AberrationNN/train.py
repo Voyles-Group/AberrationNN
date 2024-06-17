@@ -177,15 +177,18 @@ def AlternateTraining(data_path, device, hyperdict, savepath):
     wholemodel.apply(weights_init)
 
     # Initialize dataset
-    dataset = RonchiTiltPairAll(data_path, filestart=0, filenum=100, nimage=50, normalization=False, transform=None,
-                                patch=pms.patch,  imagesize=pms.imagesize, downsampling=pms.downsampling, if_HP = pms.if_HP, if_reference=pms.if_reference)
+    dataset = RonchiTiltPairAll(data_path, filestart=0, filenum=100, nimage=50, transform=None,
+                                patch=pms.patch,  imagesize=pms.imagesize, downsampling=pms.downsampling,
+                                pre_normalization=pms.pre_normalization, normalization=pms.normalization,
+                                if_HP=pms.if_HP, if_reference=pms.if_reference)
 
     aug_N = 20####################
     datasets = []
     for i in range(aug_N):
-        datasets.append(RonchiTiltPairAll(data_path, filestart=0, filenum=100, nimage=50, normalization=False,
+        datasets.append(RonchiTiltPairAll(data_path, filestart=0, filenum=100, nimage=50,
+                                          pre_normalization=pms.pre_normalization, normalization=pms.normalization,
                                           patch=pms.patch, imagesize=pms.imagesize, downsampling=pms.downsampling,
-                                          transform=Augmentation(2),if_HP = pms.if_HP, if_reference=pms.if_reference))
+                                          transform=Augmentation(2), if_HP=pms.if_HP, if_reference=pms.if_reference))
 
     repeat_dataset = data.ConcatDataset([dataset] + datasets)
 

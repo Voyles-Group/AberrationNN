@@ -131,9 +131,9 @@ def get_gpu_info(cuda_device: int) -> int:
 
 
 class Parameters:
-    def __init__(self, loss, first_inputchannels, reduction, skip_connection, fca_block_n, if_FT, if_HP, if_CAB, patch, imagesize, downsampling,if_reference,
-                 batchsize, print_freq, learning_rate, learning_rate_0, epochs, epochs_cycle_1, epochs_cycle, epochs_ramp, warmup, cooldown, lr_fact,
-                 **kwargs):
+    def __init__(self, loss, first_inputchannels, reduction, skip_connection, fca_block_n, if_CAB, if_FT, if_HP, pre_normalization, normalization, patch,
+                 imagesize, downsampling, if_reference, batchsize, print_freq, learning_rate, learning_rate_0, epochs,
+                 epochs_cycle_1, epochs_cycle, epochs_ramp, warmup, cooldown, lr_fact, **kwargs):
 
         self.loss = loss
         self.first_inputchannels = first_inputchannels
@@ -143,6 +143,8 @@ class Parameters:
         self.if_FT = if_FT
         self.if_HP = if_HP
         self.if_CAB = if_CAB
+        self.pre_normalization = pre_normalization
+        self.normalization = normalization
         self.patch = patch
         self.imagesize = imagesize
         self.downsampling = downsampling
