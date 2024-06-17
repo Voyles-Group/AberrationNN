@@ -161,6 +161,10 @@ class RonchiTiltPairAll:
 
         image_y = np.load(path)['tilty'][int(img_id[-3:])]
         image_ny = np.load(path)['tiltny'][int(img_id[-3:])]
+        if self.if_HP:
+            image_y = hp_filter(image_y)
+            image_ny = hp_filter(image_ny)
+
         image_y = torch.as_tensor(image_y, dtype=torch.float32)
         image_ny = torch.as_tensor(image_ny, dtype=torch.float32)
         if self.downsampling is not None and self.downsampling > 1:
@@ -176,6 +180,7 @@ class RonchiTiltPairAll:
         image = torch.cat([image1, image2], dim=0)
 
         if self.if_reference:
+            # not up-to-date
             reference = np.load(self.data_dir + img_id[:-3] + '/standard_reference.npz')  ##########
             image_x = torch.as_tensor(reference['tiltx'], dtype=torch.float32)
             image_nx = torch.as_tensor(reference['tiltnx'], dtype=torch.float32)
