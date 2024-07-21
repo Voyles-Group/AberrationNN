@@ -1,8 +1,6 @@
 from torch import nn
-import torch.nn.functional as F
 import torch
-from typing import List
-from AberrationNN.blocks import Standardization_Layer, Contraction_Path, Expansion_Path
+from AberrationNN.archive.blocks import Standardization_Layer, Contraction_Path, Expansion_Path
 
 
 class NestedUNet(nn.Module):

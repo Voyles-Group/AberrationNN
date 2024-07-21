@@ -1,8 +1,7 @@
 from torch import nn
-import torch.nn.functional as F
 import torch
 from typing import List
-from AberrationNN.covpadsame import Conv2dSame, ConvTranspose2dSame
+from AberrationNN.archive.covpadsame import Conv2dSame, ConvTranspose2dSame
 
 
 class Standardization_Layer(nn.Module):

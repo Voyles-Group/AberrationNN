@@ -3,7 +3,7 @@
 import numpy as np
 from functools import lru_cache
 
-from AberrationNN.mother_wavelets import wavelets
+from AberrationNN.archive.mother_wavelets import wavelets
 
 
 class WaveletTransformException(Exception):

@@ -1,19 +1,14 @@
 import time
+import torch
+import numpy as np
 import json
 import multiprocessing
 import subprocess
-import time
 from typing import List, Union
-
 import matplotlib.pyplot as plt
-import numpy as np
-import torch
-from torch import nn
 from torch.nn import Conv2d, ConvTranspose2d
-
-from AberrationNN.NestedUNet import NestedUNet
-from AberrationNN.train_utils import Parameters
 from AberrationNN.train_utils import lr_schedule
+from AberrationNN.train_utils import Parameters
 
 
 def collate_fn(batch):
@@ -156,13 +151,11 @@ def go_train(hyperdict, dataset, device, save_ckp, save_final, **kwargs):
     d_test = torch.utils.data.DataLoader(
         dataset_test, batch_size=pms.batchsize, shuffle=False, pin_memory=True, num_workers=pool._processes - 8)
 
-    model = NestedUNet(init_channel=2, depth=pms.depth, n_blocks=pms.n_blocks,
-                       first_inputchannels=pms.first_inputchannels,
+    model = NestedUNet(depth=pms.depth, n_blocks=pms.n_blocks, first_inputchannels=pms.first_inputchannels,
                        activation=pms.activation, dropout=pms.dropput)
-    ####################################
-    model = nn.DataParallel(model)
-    ######################################
-    model.to(device)
+
+    if device == torch.device('cuda'):
+        model.cuda()
 
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.Adam(params)
@@ -174,8 +167,7 @@ def go_train(hyperdict, dataset, device, save_ckp, save_final, **kwargs):
 
     print("\ntotal time of this training: {:.1f} s".format(time.time() - since))
     if save_final and pms.result_path is not None:
-        torch.save({'state_dict': trained_model.module.state_dict(), 'use_se': True}, pms.result_path + '/statedict.tar')
-        # trained_model.module.state_dict() is needed for a DataParallel model object.
+        torch.save({'state_dict': model.state_dict(), 'use_se': True}, pms.result_path + '/statedict.tar')
         with open(pms.result_path + '/hyp.json', 'w+') as fp:
             json.dump(hyperdict, fp)
 

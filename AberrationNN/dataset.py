@@ -2,11 +2,13 @@ import numpy as np
 import torch
 import os
 import torch.nn.functional as F
-from AberrationNN.utils import polar2cartesian
+from AberrationNN.utils import polar2cartesian,evaluate_aberration_derivative_cartesian
 import itertools
 import pandas as pd
 from skimage import filters
+from random import randrange
 
+wavelength_A = 0.025079340317328468
 
 # path = '/srv/home/jwei74/AberrationEstimation/BeamtiltPair10mrad_STO_defocus250nm/'
 # from pathlib import Path
@@ -60,6 +62,7 @@ def ronchis2ffts(image_d, image_o, patch, fft_pad_factor, if_hann, if_pre_norm):
     # image_d = map01(np.log(image_d))
     if if_pre_norm:
         image_d = map01(image_d)
+        image_o = map01(image_o)
 
     windows = image_d.unfold(0, patch, patch)
     windows = windows.unfold(1, patch, patch)
@@ -114,10 +117,173 @@ class Augmentation(object):
         return torch.multiply(sample, gain_ref)
 
 
+class MagnificationDataset:
+    """
+    Default operations:
+    image: map01, downsample by 2, FFT, difference, FFT defocus patches - FFT overfocus patches
+    target: polar transformed into cartesian, all in angstroms.
+    Example:
+
+    """
+
+    def __init__(self, data_dir, filestart=0, pre_normalization=False, normalization=True,
+                 transform=None, patch=32, imagesize=512, downsampling=2, if_HP=True):
+        self.data_dir = data_dir
+        filenum = len(os.listdir(data_dir))
+        nimage = np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz')['defocus'].shape[0]
+        # folder name + index number 000-099
+        self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
+                    [*range(nimage)]]
+        self.normalization = normalization
+        self.pre_normalization = pre_normalization
+
+        self.transform = transform
+        self.patch = patch
+        self.imagesize = imagesize
+        self.downsampling = downsampling
+        self.if_HP = if_HP
+        self.fft_pad_factor = 2
+
+    def __getitem__(self, i):
+        img_id = self.ids[i]  # folder names and index number 000-099
+        image, xi, yi = self.get_image(img_id)
+        [du2, dv2, duv] = self.get_target(img_id)
+        pick_du2 = du2[
+                   xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
+                   yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling].mean()
+        pick_dv2 = dv2[
+                   xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
+                   yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling].mean()
+        pick_duv = duv[
+                   xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
+                   yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling].mean()
+        target = [pick_du2, pick_dv2, pick_duv]
+        target = torch.as_tensor(target, dtype=torch.float32)
+        return image, target
+
+    def __len__(self):
+        return len(self.ids)
+
+    def singleFFT(self, im_o, im_d):
+        if self.if_HP:
+            picked_o = hp_filter(im_o)
+            picked_d = hp_filter(im_d)
+        picked_o = torch.as_tensor(picked_o, dtype=torch.float32)
+        picked_d = torch.as_tensor(picked_d, dtype=torch.float32)
+        if self.downsampling is not None and self.downsampling > 1:
+            picked_o = F.interpolate(picked_o[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+            picked_d = F.interpolate(picked_d[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+        if self.transform:
+            picked_o = self.transform(picked_o)
+            picked_d = self.transform(picked_d)
+
+        isize = self.patch * self.fft_pad_factor
+        csize = isize
+        topc = isize // 2 - csize // 2
+        leftc = isize // 2 - csize // 2
+        bottomc = isize // 2 + csize // 2
+        rightc = isize // 2 + csize // 2
+
+        hanning = np.outer(np.hanning(self.patch), np.hanning(self.patch))  # A 2D hanning window with the same size as image
+
+        top = isize // 2 - self.patch // 2
+        left = isize // 2 - self.patch // 2
+        bottom = isize // 2 + self.patch // 2
+        right = isize // 2 + self.patch // 2
+
+        if self.pre_normalization:
+            picked_d = map01(picked_o)
+        tmp = torch.zeros((isize, isize))
+        tmp[top:bottom, left:right] = picked_o * hanning
+        tmpft = torch.fft.fft2(tmp)
+        tmpft = torch.fft.fftshift(tmpft)
+        fft_o = np.abs(tmpft[topc:bottomc, leftc:rightc])
+        #####################################################################################
+        if self.pre_normalization:
+            picked_d = map01(picked_d)
+        tmp = torch.zeros((isize, isize))
+        tmp[top:bottom, left:right] = picked_d * hanning
+        tmpft = torch.fft.fft2(tmp)
+        tmpft = torch.fft.fftshift(tmpft)
+        fft_d = np.abs(tmpft[topc:bottomc, leftc:rightc])
+
+        # image = fft_o - fft_d
+        #
+        # if self.normalization:
+        #     image = torch.where(image >= 0, image / image.max(), -image / image.min())
+
+        # afraid the difference patch cancel out some dots, so keep all four patches.
+        if self.normalization:
+            fft_o = (fft_o - fft_o.min()) / (fft_o.max()-fft_o.min())
+            fft_d = (fft_d - fft_d.min()) / (fft_d.max()-fft_d.min())
+
+        return torch.cat([fft_o[None, ...], fft_d[None, ...]])
+
+    def get_image(self, img_id):
+        path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
+        image_o = np.load(path)['overfocus'][int(img_id[-3:])][64:-64, 64:-64]  # crop the outer border
+        image_d = np.load(path)['defocus'][int(img_id[-3:])][64:-64, 64:-64]
+
+        # pick a patch
+        rrange = int(image_o.shape[0] / self.patch / self.downsampling)
+        xi = randrange(0, rrange)
+        yi = randrange(0, rrange)
+        picked_o = image_o[
+                   xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
+                   yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling]
+        picked_d = image_d[
+                   xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
+                   yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling]
+
+        image_aberration = self.singleFFT(picked_o, picked_d)
+
+        path_rf = self.data_dir + img_id[:-3] + '/standard_reference_d_o.npy'
+        image_o = np.load(path_rf)[1][64:-64, 64:-64]  # crop the outer border
+        image_d = np.load(path_rf)[0][64:-64, 64:-64]
+        picked_o = image_o[
+                   xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
+                   yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling]
+        picked_d = image_d[
+                   xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
+                   yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling]
+        image_reference = self.singleFFT(picked_o, picked_d)
+
+        # return torch.cat([image_aberration[None, ...], image_reference[None,...]]), xi, yi
+        return torch.cat([image_aberration, image_reference]), xi, yi
+
+    def get_target(self, img_id):
+        # return shape need to be [x]
+        # just calculate the whole function array here, no downsampling considered
+        target = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')  ###########
+
+        path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
+        image_in = np.load(path)['overfocus'][int(img_id[-3:])][64:-64, 64:-64]  # crop the outer border
+        gpts = image_in.shape[0]
+        sampling = target.get(['k_sampling_mrad']).to_numpy()[int(img_id[-3:])]
+        k = (np.arange(gpts) - gpts / 2) * sampling * 1e-3 * wavelength_A
+        kxx, kyy = np.meshgrid(*(k, k), indexing="ij")  # A-1
+
+        target = target.get(['C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[
+            int(img_id[-3:])]  ##########
+        # target = torch.as_tensor(target, dtype=torch.float32)  ##### important to keep same dtype
+        polar = {'C10': target[0], 'C12': target[1], 'phi12': target[2],
+                 'C21': target[3], 'phi21': target[4], 'C23': target[5], 'phi23': target[6], 'C30': target[7]}
+        car = polar2cartesian(polar)
+
+        all_derivatives = evaluate_aberration_derivative_cartesian(car, kxx, kyy, wavelength_A*1e-10)
+
+        return all_derivatives
+
+
+
 class RonchiTiltPairAll:
 
-    def __init__(self, data_dir, filestart=0, filenum=120, nimage=100, pre_normalization=False, normalization=True, transform=None,
+    def __init__(self, data_dir, filestart=0, filenum=120, nimage=100, pre_normalization=False, normalization=True,
+                 transform=None,
                  patch=32, imagesize=512, downsampling=2, if_HP=True, if_reference=False):
+        filenum = len(os.listdir(data_dir))
+        nimage = np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz')['tiltx'].shape[0]
+
         self.data_dir = data_dir
         # folder name + index number 000-099
         self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
@@ -188,7 +354,7 @@ class RonchiTiltPairAll:
                 image_x = F.interpolate(image_x[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[
                     0, 0]
                 image_nx = \
-                F.interpolate(image_nx[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+                    F.interpolate(image_nx[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
             image_rf1 = ronchis2ffts(image_x, image_nx, self.patch, 2, True, self.pre_normalization)
 
             image_y = torch.as_tensor(reference['tilty'], dtype=torch.float32)
@@ -197,13 +363,13 @@ class RonchiTiltPairAll:
                 image_y = F.interpolate(image_y[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[
                     0, 0]
                 image_ny = \
-                F.interpolate(image_ny[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+                    F.interpolate(image_ny[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
             image_rf2 = ronchis2ffts(image_y, image_ny, self.patch, 2, True, self.pre_normalization)
 
             # then not decided how to use the reference yet.
 
         if self.normalization:
-            image = torch.where(image >= 0, image/image.max(), -image/image.min())
+            image = torch.where(image >= 0, image / image.max(), -image / image.min())
 
             return image
 
@@ -235,9 +401,11 @@ class Ronchi2fftDatasetAll:
         a = dataset.get_target('149631001')
     """
 
-    def __init__(self, data_dir, filestart=0, filenum=120, nimage=100,  pre_normalization=False, normalization=True,
+    def __init__(self, data_dir, filestart=0, filenum=120, nimage=100, pre_normalization=False, normalization=True,
                  transform=None, patch=32, imagesize=512, downsampling=2, if_HP=True, if_reference=False):
         self.data_dir = data_dir
+        filenum = len(os.listdir(data_dir))
+        nimage = np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz')['defocus'].shape[0]
         # folder name + index number 000-099
         self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
                     [*range(nimage)]]
@@ -288,7 +456,7 @@ class Ronchi2fftDatasetAll:
             image = torch.cat([fft_patch[None, ...], image], dim=0)
 
         if self.normalization:
-            image = torch.where(image >= 0, image/image.max(), -image/image.min())
+            image = torch.where(image >= 0, image / image.max(), -image / image.min())
 
             return image
 

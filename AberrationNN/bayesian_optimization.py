@@ -2,7 +2,7 @@
 
 from AberrationNN.train_utils import *
 from AberrationNN.FCAResNet import FCAResNet
-from AberrationNN.dataset import Ronchi2fftDataset2nd
+from AberrationNN.dataset import Ronchi2fftDatasetAll
 import skopt
 from skopt import gp_minimize
 from skopt.space import Real, Categorical
@@ -15,7 +15,7 @@ from skopt.plots import plot_objective
 
 # Hyper-Parameters
 data_patchsize = Categorical(categories=[16, 32, 64], name='data_patchsize')
-# data_focusstep = Categorical(categories=[1000, 10000], name='data_focusstep')
+data_focusstep = Categorical(categories=[1000, 10000], name='data_focusstep')
 
 model_reduction = Categorical(categories=[1, 4, 8, 16, 32, 64], name='model_reduction')
 model_ft = Categorical(categories=[True, False], name='model_ft')

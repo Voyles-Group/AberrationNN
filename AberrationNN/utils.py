@@ -2,6 +2,34 @@ import numpy as np
 from collections import defaultdict
 from typing import Union, Dict
 
+
+def evaluate_aberration_derivative_cartesian(cartiaberration: Dict, u: Union[float, np.ndarray], v: Union[float, np.ndarray], wavelength) -> Union[float, np.ndarray]:
+    p = cartiaberration.copy()
+    p.update((x, y*1e-10) for x, y in p.items())
+
+    du2 = np.zeros(u.shape, dtype=np.float32)
+    if any([p[symbol] != 0. for symbol in ('C10', 'C12a', 'C12b', 'C30')]):
+        du2 = du2 + (p['C10'] + p['C12a'] + p['C30'] * 3 * u**2 +  p['C30'] * 2 * v**2)
+    if any([p[symbol] != 0. for symbol in ('C21a', 'C21b', 'C23a', 'C23b')]):
+        du2 = du2 + (p['C21a'] * 2 * u + p['C21b'] * 2 * v + p['C23a'] * 6 * u - p['C23b'] * 6 * v)
+    du2 = 2*np.pi/wavelength*du2
+
+    dv2 = np.zeros(u.shape, dtype=np.float32)
+    if any([p[symbol] != 0. for symbol in ('C10', 'C12a', 'C12b', 'C30')]):
+        dv2 = dv2 + (p['C10'] - p['C12a'] + p['C30'] * 2 * u**2 +  p['C30'] * 3 * v**2)
+    if any([p[symbol] != 0. for symbol in ('C21a', 'C21b', 'C23a', 'C23b')]):
+        dv2 = dv2 + (p['C21a'] * 2 * u + p['C21b'] * 2 * v - p['C23a'] * 6 * u + p['C23b'] * 6 * v)
+    dv2 = 2*np.pi/wavelength*dv2
+
+    duv = np.zeros(u.shape, dtype=np.float32)
+    if any([p[symbol] != 0. for symbol in ('C10', 'C12a', 'C12b', 'C30')]):
+        duv = duv + 2 * p['C12b'] + p['C30'] * 4 * u* v
+    if any([p[symbol] != 0. for symbol in ('C21a', 'C21b', 'C23a', 'C23b')]):
+        duv = duv + (p['C21a'] * 2 * u + p['C21b'] * 2 * v - p['C23a'] * 6 * v + p['C23b'] * 6 * u)
+    duv = 2*np.pi/wavelength*duv
+    return [du2, dv2, duv]
+
+
 # Ref https://github.com/abTEM/abTEM/blob/b2338a44c4b76dcdbe26c8a491bfba77aaca0500/abtem/transfer.py#L1127  _evaluate_from_angular_grid()
 def evaluate_aberration_polar(polaraberration: Dict, alpha: Union[float, np.ndarray], phi: Union[float, np.ndarray],
                               wavelength) -> Union[float, np.ndarray]:

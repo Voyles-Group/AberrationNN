@@ -9,7 +9,6 @@ from AberrationNN.customloss import LossDataWithChi
 import torch.utils.data as data
 import multiprocessing
 
-
 # example
 hyperdict = {'loss': ['SmoothL1Loss', 'SmoothL1Loss', 'SmoothL1Loss', 'SmoothL1Loss'],# MAPE
              'first_inputchannels': 64,
@@ -38,7 +37,8 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-def train_and_test(step, order, model, optimizer, data_loader_train, data_loader_test, device, param, savepath, check_gradient=True, regularization=False):
+def train_and_test(step, order, model, optimizer, data_loader_train, data_loader_test, device, param, savepath,
+                   check_gradient=True, regularization=False):
     """
     currently this is set uo for the dataset only give 7 coefficients, without C30
     """
@@ -80,22 +80,23 @@ def train_and_test(step, order, model, optimizer, data_loader_train, data_loader
         lossfunc = LossDataWithChi()
         ####################################################################
         # something need to be modified in the future
-        k_sampling_mrad=0.07453
-        phasemap_gpts=1024
-        wavelengthA=0.025
+        k_sampling_mrad = 0.07453
+        phasemap_gpts = 1024
+        wavelengthA = 0.025
         k = k_sampling_mrad * 1e-3 * (torch.arange(phasemap_gpts) - phasemap_gpts / 2)
         kxx, kyy = torch.meshgrid(*(k, k), indexing="ij")  # rad
         kxx = kxx.to(device)
         kyy = kyy.to(device)
         #####################################################################
 
-        trainloss_data, trainloss_chi = lossfunc(pred, targets, kxx, kyy, order=order, train_step=step, wavelengthA = wavelengthA)
+        trainloss_data, trainloss_chi = lossfunc(pred, targets, kxx, kyy, order=order, train_step=step,
+                                                 wavelengthA=wavelengthA)
         loss = trainloss_data + trainloss_chi
 
         # Compute L1 loss component
         if regularization:
-            l1_weight = 0.06 # 0.3
-            l2_weight = 0.14 # 0.7
+            l1_weight = 0.06  # 0.3
+            l2_weight = 0.14  # 0.7
             reg_parameters = []
             for parameter in model.parameters():
                 reg_parameters.append(parameter.view(-1))
@@ -113,7 +114,7 @@ def train_and_test(step, order, model, optimizer, data_loader_train, data_loader
         trainloss_total.append((trainloss_data.item(), trainloss_chi.item()))
 
         ##########################################################################
-        if check_gradient==True:
+        if check_gradient == True:
             for p, n in model.named_parameters():
                 if n[-6:] == 'weight':
                     if (p.grad > 1e5).any() or (p.grad < 1e-5).any():
@@ -127,15 +128,18 @@ def train_and_test(step, order, model, optimizer, data_loader_train, data_loader
         model.eval()
         with torch.no_grad():
             pred = model(images_test)
-            testloss_data, testloss_chi = lossfunc(pred, targets, kxx, kyy, order=order, train_step=step, wavelengthA = wavelengthA)
+            testloss_data, testloss_chi = lossfunc(pred, targets, kxx, kyy, order=order, train_step=step,
+                                                   wavelengthA=wavelengthA)
 
         testloss_total.append((testloss_data.item(), testloss_chi.item()))
 
         del images_train, images_test, targets  # mannually release GPU memory during training loop.
 
         if i % param.print_freq == 0:
-            print("Epoch{}\t".format(i), "Train Loss data {:.3f}".format(trainloss_data.item()), "Train Loss chi {:.3f}".format(trainloss_chi.item()),  )
-            print("Epoch{}\t".format(i), "Test Loss data {:.3f}".format(testloss_data.item()), "Test Loss {:.3f}".format(testloss_chi.item()),
+            print("Epoch{}\t".format(i), "Train Loss data {:.3f}".format(trainloss_data.item()),
+                  "Train Loss chi {:.3f}".format(trainloss_chi.item()), )
+            print("Epoch{}\t".format(i), "Test Loss data {:.3f}".format(testloss_data.item()),
+                  "Test Loss {:.3f}".format(testloss_chi.item()),
                   'Cost: {}\t s.'.format(time.time() - record))
             gpu_usage = get_gpu_info(torch.cuda.current_device())
             print('GPU memory usage: {}/{}'.format(gpu_usage[0], gpu_usage[1]))
@@ -143,9 +147,20 @@ def train_and_test(step, order, model, optimizer, data_loader_train, data_loader
 
             if step == 4:
                 # for the final step, save multiple models to get the best
-                torch.save({'state_dict': model.state_dict(), }, savepath + 'model_trainstep4_epoch'+str(i)+'.tar')
+                torch.save({'state_dict': model.state_dict(), }, savepath + 'model_trainstep4_epoch' + str(i) + '.tar')
+        if step == 4 & stopper.best_epoch:
+            # for the final step, save multiple models to get the best
+            torch.save({'state_dict': model.state_dict(), 'epoch': stopper.best_epoch},
+                       savepath + 'model_trainstep4_bestepoch.tar')
 
-        if stopper(i, testloss_chi.item()):
+        stop = stopper(i, testloss_chi.item())
+
+        if not stop:
+            if step == 4 & stopper.best_epoch == i:
+                torch.save({'state_dict': model.state_dict(), 'epoch': stopper.best_epoch},
+                           savepath + 'model_trainstep4_bestepoch.tar')
+                # for the final step, save best epoch model
+        else:
             break
 
         if i == (param.epochs - 1):
@@ -178,11 +193,11 @@ def AlternateTraining(data_path, device, hyperdict, savepath):
 
     # Initialize dataset
     dataset = RonchiTiltPairAll(data_path, filestart=0, filenum=100, nimage=50, transform=None,
-                                patch=pms.patch,  imagesize=pms.imagesize, downsampling=pms.downsampling,
+                                patch=pms.patch, imagesize=pms.imagesize, downsampling=pms.downsampling,
                                 pre_normalization=pms.pre_normalization, normalization=pms.normalization,
                                 if_HP=pms.if_HP, if_reference=pms.if_reference)
 
-    aug_N = 20####################
+    aug_N = int(pms.epochs / (dataset.__len__() * 0.4 / pms.batchsize))
     datasets = []
     for i in range(aug_N):
         datasets.append(RonchiTiltPairAll(data_path, filestart=0, filenum=100, nimage=50,
@@ -201,36 +216,40 @@ def AlternateTraining(data_path, device, hyperdict, savepath):
     pool = multiprocessing.Pool()
     # define training and validation data loaders
     d_train = torch.utils.data.DataLoader(
-        dataset_train, batch_size=pms.batchsize, shuffle=True, pin_memory=True, num_workers=pool._processes - 8)
+        dataset_train, batch_size=pms.batchsize, shuffle=True, pin_memory=True, num_workers=int(pool._processes / 2))
 
     d_test = torch.utils.data.DataLoader(
-        dataset_test, batch_size=pms.batchsize, shuffle=False, pin_memory=True, num_workers=pool._processes - 8)
+        dataset_test, batch_size=pms.batchsize, shuffle=False, pin_memory=True, num_workers=int(pool._processes / 2))
 
     print('##############################START TRAINING STEP ONE######################################')
-    trainloss, testloss, trained_model1st = train_and_test(1, 2, wholemodel, optimizer, d_train, d_test, device, pms, savepath)
+    trainloss, testloss, trained_model1st = train_and_test(1, 2, wholemodel, optimizer, d_train, d_test, device,
+                                                           pms, savepath)
 
     with open(savepath + 'hyperdict.json', 'w') as fp:
         json.dump(hyperdict, fp)
     torch.save({'state_dict': trained_model1st.state_dict(), }, savepath + 'model_trainstep1.tar')
-    torch.save({'train': trainloss, 'test': testloss,}, savepath + 'loss_model_trainstep1.tar')
-    plot_losses(1,trainloss, testloss)
+    torch.save({'train': trainloss, 'test': testloss, }, savepath + 'loss_model_trainstep1.tar')
+    plot_losses(1, trainloss, testloss)
 
     print('##############################START TRAINING STEP TWO######################################')
-    trainloss, testloss, trained_model2nd = train_and_test(2, 1,trained_model1st, optimizer, d_train, d_test, device, pms, savepath)
+    trainloss, testloss, trained_model2nd = train_and_test(2, 1, trained_model1st, optimizer, d_train, d_test,
+                                                           device, pms, savepath)
     torch.save({'state_dict': trained_model2nd.state_dict(), }, savepath + 'model_trainstep2.tar')
-    torch.save({'train': trainloss, 'test': testloss,}, savepath + 'loss_model_trainstep2.tar')
-    plot_losses(2,trainloss, testloss)
+    torch.save({'train': trainloss, 'test': testloss, }, savepath + 'loss_model_trainstep2.tar')
+    plot_losses(2, trainloss, testloss)
 
     print('##############################START TRAINING STEP THREE######################################')
-    trainloss, testloss, trained_model3th = train_and_test(3, 2, trained_model1st, optimizer, d_train, d_test, device, pms, savepath)
+    trainloss, testloss, trained_model3th = train_and_test(3, 2, trained_model2nd, optimizer, d_train, d_test,
+                                                           device, pms, savepath)
     torch.save({'state_dict': trained_model3th.state_dict(), }, savepath + 'model_trainstep3.tar')
-    torch.save({'train': trainloss, 'test': testloss,}, savepath + 'loss_model_trainstep3.tar')
+    torch.save({'train': trainloss, 'test': testloss, }, savepath + 'loss_model_trainstep3.tar')
     plot_losses(3, trainloss, testloss)
 
     print('##############################START TRAINING STEP FOUR######################################')
-    trainloss, testloss, trained_model4th = train_and_test(4, 2, trained_model1st, optimizer, d_train, d_test, device, pms, savepath)
+    trainloss, testloss, trained_model4th = train_and_test(4, 2, trained_model3th, optimizer, d_train,
+                                                           d_test, device, pms, savepath)
     torch.save({'state_dict': trained_model4th.state_dict(), }, savepath + 'model_trainstep4.tar')
-    torch.save({'train': trainloss, 'test': testloss,}, savepath + 'loss_model_trainstep4.tar')
+    torch.save({'train': trainloss, 'test': testloss, }, savepath + 'loss_model_trainstep4.tar')
 
     plot_losses(4, trainloss, testloss)
 
