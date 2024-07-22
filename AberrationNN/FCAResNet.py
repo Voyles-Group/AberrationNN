@@ -139,7 +139,6 @@ class CoordAttentionBlock(nn.Module):
         x_w = self.pool_w(x).permute(0, 1, 3, 2)
 
         y = torch.cat([x_h, x_w], dim=2)
-        print(y.shape, 'y')
         y = self.conv1(y)
         y = self.bn1(y)
         y = gelu(y)  # activation function to be determined

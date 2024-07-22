@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import os
 import torch.nn.functional as F
-from AberrationNN.utils import polar2cartesian,evaluate_aberration_derivative_cartesian
+from AberrationNN.utils import polar2cartesian, evaluate_aberration_derivative_cartesian, evaluate_aberration_cartesian
 import itertools
 import pandas as pd
 from skimage import filters
@@ -207,22 +207,44 @@ class MagnificationDataset:
         tmpft = torch.fft.fftshift(tmpft)
         fft_d = np.abs(tmpft[topc:bottomc, leftc:rightc])
 
-        # image = fft_o - fft_d
-        #
-        # if self.normalization:
-        #     image = torch.where(image >= 0, image / image.max(), -image / image.min())
+        image = fft_o - fft_d
 
-        # afraid the difference patch cancel out some dots, so keep all four patches.
         if self.normalization:
-            fft_o = (fft_o - fft_o.min()) / (fft_o.max()-fft_o.min())
-            fft_d = (fft_d - fft_d.min()) / (fft_d.max()-fft_d.min())
+            image = torch.where(image >= 0, image / image.max(), -image / image.min())
 
-        return torch.cat([fft_o[None, ...], fft_d[None, ...]])
+        return image
+
+    def check_chi(self, img_id):
+        # just calculate the whole function array here, no downsampling considered
+        target = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')  ###########
+
+        path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
+        crop = 64 + 128
+        image_in = np.load(path)['overfocus'][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
+        gpts = image_in.shape[0]
+        sampling = target.get(['k_sampling_mrad']).to_numpy()[int(img_id[-3:])]
+        k = (np.arange(gpts) - gpts / 2) * sampling * 1e-3
+        kxx, kyy = np.meshgrid(*(k, k), indexing="ij")  # A-1
+
+        target = target.get(['C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[
+            int(img_id[-3:])]  ##########
+        # target = torch.as_tensor(target, dtype=torch.float32)  ##### important to keep same dtype
+        polar = {'C10': target[0], 'C12': target[1], 'phi12': target[2],
+                 'C21': target[3], 'phi21': target[4], 'C23': target[5], 'phi23': target[6], 'C30': target[7]}
+        car = polar2cartesian(polar)
+        phase_shift = evaluate_aberration_cartesian(car, kxx, kyy, wavelength_A*1e-10)
+        print(phase_shift.max())
+        if phase_shift.max() > (2 * np.pi):
+            print('Exceeded')
+            return phase_shift
+        else:
+            return phase_shift
 
     def get_image(self, img_id):
         path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
-        image_o = np.load(path)['overfocus'][int(img_id[-3:])][64:-64, 64:-64]  # crop the outer border
-        image_d = np.load(path)['defocus'][int(img_id[-3:])][64:-64, 64:-64]
+        crop = 64+128
+        image_o = np.load(path)['overfocus'][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
+        image_d = np.load(path)['defocus'][int(img_id[-3:])][crop:-crop, crop:-crop]
 
         # pick a patch
         rrange = int(image_o.shape[0] / self.patch / self.downsampling)
@@ -238,8 +260,8 @@ class MagnificationDataset:
         image_aberration = self.singleFFT(picked_o, picked_d)
 
         path_rf = self.data_dir + img_id[:-3] + '/standard_reference_d_o.npy'
-        image_o = np.load(path_rf)[1][64:-64, 64:-64]  # crop the outer border
-        image_d = np.load(path_rf)[0][64:-64, 64:-64]
+        image_o = np.load(path_rf)[1][crop:-crop, crop:-crop]  # crop the outer border
+        image_d = np.load(path_rf)[0][crop:-crop, crop:-crop]
         picked_o = image_o[
                    xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
                    yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling]
@@ -248,20 +270,19 @@ class MagnificationDataset:
                    yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling]
         image_reference = self.singleFFT(picked_o, picked_d)
 
-        # return torch.cat([image_aberration[None, ...], image_reference[None,...]]), xi, yi
-        return torch.cat([image_aberration, image_reference]), xi, yi
+        return torch.cat([image_aberration[None, ...], image_reference[None,...]]), xi, yi
 
     def get_target(self, img_id):
         # return shape need to be [x]
         # just calculate the whole function array here, no downsampling considered
         target = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')  ###########
-
+        crop = 64+128
         path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
-        image_in = np.load(path)['overfocus'][int(img_id[-3:])][64:-64, 64:-64]  # crop the outer border
+        image_in = np.load(path)['overfocus'][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
         gpts = image_in.shape[0]
         sampling = target.get(['k_sampling_mrad']).to_numpy()[int(img_id[-3:])]
-        k = (np.arange(gpts) - gpts / 2) * sampling * 1e-3 * wavelength_A
-        kxx, kyy = np.meshgrid(*(k, k), indexing="ij")  # A-1
+        k = (np.arange(gpts) - gpts / 2) * sampling * 1e-3
+        kxx, kyy = np.meshgrid(*(k, k), indexing="ij")  # rad
 
         target = target.get(['C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[
             int(img_id[-3:])]  ##########

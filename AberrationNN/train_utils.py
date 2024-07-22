@@ -93,13 +93,13 @@ def weights_init(module):
 #     plt.show()
 
 
-def plot_losses(step, train_loss, test_loss) -> None:
+def plot_losses(step, train_loss, test_loss, savepath) -> None:
     """
     Plots train and test losses
     """
     print('Plotting training history')
     fig, ax = plt.subplots(1, 2, figsize=(6, 3))
-    ax[0].plot( [loss[0] for loss in train_loss], label='Train data')
+    ax[0].plot([loss[0] for loss in train_loss], label='Train data')
     ax[0].plot([loss[0] for loss in test_loss], label='Test data')
     ax[0].set_xlabel('Epoch')
     ax[0].set_ylabel('Loss')
@@ -111,7 +111,7 @@ def plot_losses(step, train_loss, test_loss) -> None:
     ax[1].set_ylabel('Loss')
     ax[1].legend()
     plt.show()
-    plt.savefig(os.getcwd()+'/step'+str(step) + 'history.png')
+    plt.savefig(savepath+'/step'+str(step) + 'history.png')
 
 
 def get_gpu_info(cuda_device: int) -> int:

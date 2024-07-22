@@ -54,9 +54,7 @@ class MagnificationNet(nn.Module):
         self.cov3 = nn.Conv2d(first_inputchannels * 4, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        print(x.shape)
         c1 = gelu(self.cov0(x))
-        print(c1.shape)
         keep = gelu(self.cov0(x))
         if self.if_CAB:
             c1 = self.cab1(c1)
