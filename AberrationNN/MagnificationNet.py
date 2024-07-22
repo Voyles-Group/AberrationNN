@@ -24,7 +24,7 @@ class MagnificationNet(nn.Module):
         # patch = round(256 / math.sqrt(first_inputchannels))
         # when first_inputchannels includes the reference,the int round make it still work.
         patch = 32  # assuming that I will not tune the patch size later
-
+        down_sampling = 1
         self.cab1 = CoordAttentionBlock(input_channels=first_inputchannels, reduction=self.reduction)
         self.cab2 = CoordAttentionBlock(input_channels=first_inputchannels * 2, reduction=self.reduction)
         self.cab3 = CoordAttentionBlock(input_channels=first_inputchannels * 4, reduction=self.reduction)
@@ -45,9 +45,11 @@ class MagnificationNet(nn.Module):
         self.cov0 = nn.Conv2d(first_inputchannels, first_inputchannels, kernel_size=3, stride=1, padding='same')
         self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels * 2, kernel_size=3, stride=1, padding='same')
         self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
-        self.dense1 = nn.Linear(first_inputchannels * 4 * int(patch * 2 / 8) ** 2,  # the * 2 is the FFT padding factor 2.
-                                int(math.sqrt(first_inputchannels)) * patch * 2 * 2)
-        self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * patch * 2 * 2, 64) # the second 2 is the FFT padding factor 2.
+        self.dense1 = nn.Linear(first_inputchannels * down_sampling * down_sampling * int(patch * 2 / 8) ** 2,
+                                # the * 2 is the FFT padding factor 2.
+                                int(math.sqrt(first_inputchannels)) * patch * down_sampling * 2)
+        self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * patch * down_sampling * 2,
+                                64)  # the second 2 is the FFT padding factor 2.
         self.dense3 = nn.Linear(64, 3)  #####################
         self.flatten = nn.Flatten()
 

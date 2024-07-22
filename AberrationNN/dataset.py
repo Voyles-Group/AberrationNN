@@ -207,12 +207,17 @@ class MagnificationDataset:
         tmpft = torch.fft.fftshift(tmpft)
         fft_d = np.abs(tmpft[topc:bottomc, leftc:rightc])
 
-        image = fft_o - fft_d
+        # image = fft_o - fft_d
+        #
+        # if self.normalization:
+        #     image = torch.where(image >= 0, image / image.max(), -image / image.min())
 
+        # afraid the difference patch cancel out some dots, so keep all four patches.
         if self.normalization:
-            image = torch.where(image >= 0, image / image.max(), -image / image.min())
+            fft_o = (fft_o - fft_o.min()) / (fft_o.max()-fft_o.min())
+            fft_d = (fft_d - fft_d.min()) / (fft_d.max()-fft_d.min())
 
-        return image
+        return torch.cat([fft_o[None, ...], fft_d[None, ...]])
 
     def check_chi(self, img_id):
         # just calculate the whole function array here, no downsampling considered
@@ -233,7 +238,6 @@ class MagnificationDataset:
                  'C21': target[3], 'phi21': target[4], 'C23': target[5], 'phi23': target[6], 'C30': target[7]}
         car = polar2cartesian(polar)
         phase_shift = evaluate_aberration_cartesian(car, kxx, kyy, wavelength_A*1e-10)
-        print(phase_shift.max())
         if phase_shift.max() > (2 * np.pi):
             print('Exceeded')
             return phase_shift
@@ -270,7 +274,7 @@ class MagnificationDataset:
                    yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling]
         image_reference = self.singleFFT(picked_o, picked_d)
 
-        return torch.cat([image_aberration[None, ...], image_reference[None,...]]), xi, yi
+        return torch.cat([image_aberration, image_reference]), xi, yi
 
     def get_target(self, img_id):
         # return shape need to be [x]
