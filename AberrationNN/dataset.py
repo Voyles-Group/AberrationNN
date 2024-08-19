@@ -292,14 +292,14 @@ class MagnificationDataset:
             int(img_id[-3:])]  ##########
         # target = torch.as_tensor(target, dtype=torch.float32)  ##### important to keep same dtype
         polar_l = {'C10': target[0], 'C12': target[1], 'phi12': target[2],
-                 'C21': target[3], 'phi21': target[4], 'C23': target[5], 'phi23': target[6], 'C30': target[7]}
+                   'C21': target[3], 'phi21': target[4], 'C23': target[5], 'phi23': target[6], 'C30': target[7]}
 
         polar_h = dict(pd.read_json(self.data_dir + img_id[:-3] + '/global_p.json', orient='index')[0])
         del polar_h['real_sampling_A']
         del polar_h['voltage_ev']
         del polar_h['focus_spread_A']
 
-        car = polar2cartesian(polar_l, **polar_h)
+        car = polar2cartesian({**polar_l, **polar_h})
 
         all_derivatives = evaluate_aberration_derivative_cartesian(car, kxx, kyy, wavelength_A*1e-10)
 

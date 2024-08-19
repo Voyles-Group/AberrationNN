@@ -10,7 +10,6 @@ import numpy as np
 from torch.nn import Conv2d, ConvTranspose2d
 import subprocess
 from typing import List, Union
-import matplotlib.pyplot as plt
 
 
 class EarlyStopping:
@@ -129,41 +128,69 @@ def get_gpu_info(cuda_device: int) -> int:
     gpu_usage = [int(y) for y in result.split(',')]
     return gpu_usage[0:2]
 
+from types import SimpleNamespace
+class Parameters(SimpleNamespace):
+    """refered to Ultralytics IterableSimpleNamespace is an extension class of SimpleNamespace that adds iterable functionality and
+    enables usage with dict() and for loops.
+    """
 
-class Parameters:
-    def __init__(self, loss, first_inputchannels, reduction, skip_connection, fca_block_n, if_CAB, if_FT, if_HP, pre_normalization, normalization, patch,
-                 imagesize, downsampling, if_reference, batchsize, print_freq, learning_rate, learning_rate_0, epochs,
-                 epochs_cycle_1, epochs_cycle, epochs_ramp, warmup, cooldown, lr_fact, **kwargs):
+    def __iter__(self):
+        """Return an iterator of key-value pairs from the namespace's attributes."""
+        return iter(vars(self).items())
 
-        self.loss = loss
-        self.first_inputchannels = first_inputchannels
-        self.reduction = reduction
-        self.skip_connection = skip_connection
-        self.fca_block_n = fca_block_n
-        self.if_FT = if_FT
-        self.if_HP = if_HP
-        self.if_CAB = if_CAB
-        self.pre_normalization = pre_normalization
-        self.normalization = normalization
-        self.patch = patch
-        self.imagesize = imagesize
-        self.downsampling = downsampling
-        self.if_reference = if_reference
-        self.batchsize = batchsize
-        self.print_freq = print_freq
-        self.learning_rate = learning_rate
-        self.learning_rate_0 = learning_rate_0
-        self.epochs = epochs
-        self.epochs_cycle_1 = epochs_cycle_1
-        self.epochs_cycle = epochs_cycle
-        self.epochs_ramp = epochs_ramp
-        self.warmup = warmup
-        self.cooldown = cooldown
-        self.lr_fact = lr_fact
+    def __str__(self):
+        """Return a human-readable string representation of the object."""
+        return "\n".join(f"{k}={v}" for k, v in vars(self).items())
 
-        self.data_path = kwargs.get('data_path')
-        self.sava_path = kwargs.get('save_path')
-        self.validation_data_path = kwargs.get('validation_data_path')
+    def __getattr__(self, attr):
+        """Custom attribute access error message with helpful information."""
+        name = self.__class__.__name__
+        raise AttributeError(
+            f"""
+            '{name}' object has no attribute '{attr}'.
+            """
+        )
+
+    def get(self, key, default=None):
+        """Return the value of the specified key if it exists; otherwise, return the default value."""
+        return getattr(self, key, default)
+
+
+# class Parameters:
+#     def __init__(self, loss, first_inputchannels, reduction, skip_connection, fca_block_n, if_CAB, if_FT, if_HP, pre_normalization, normalization, patch,
+#                  imagesize, downsampling, if_reference, batchsize, print_freq, learning_rate, learning_rate_0, epochs,
+#                  epochs_cycle_1, epochs_cycle, epochs_ramp, warmup, cooldown, lr_fact, weight_decay, **kwargs):
+#
+#         self.loss = loss
+#         self.first_inputchannels = first_inputchannels
+#         self.reduction = reduction
+#         self.skip_connection = skip_connection
+#         self.fca_block_n = fca_block_n
+#         self.if_FT = if_FT
+#         self.if_HP = if_HP
+#         self.if_CAB = if_CAB
+#         self.pre_normalization = pre_normalization
+#         self.normalization = normalization
+#         self.patch = patch
+#         self.imagesize = imagesize
+#         self.downsampling = downsampling
+#         self.if_reference = if_reference
+#         self.batchsize = batchsize
+#         self.print_freq = print_freq
+#         self.weight_decay = weight_decay
+#         self.learning_rate = learning_rate
+#         self.learning_rate_0 = learning_rate_0
+#         self.epochs = epochs
+#         self.epochs_cycle_1 = epochs_cycle_1
+#         self.epochs_cycle = epochs_cycle
+#         self.epochs_ramp = epochs_ramp
+#         self.warmup = warmup
+#         self.cooldown = cooldown
+#         self.lr_fact = lr_fact
+#
+#         self.data_path = kwargs.get('data_path')
+#         self.sava_path = kwargs.get('save_path')
+#         self.validation_data_path = kwargs.get('validation_data_path')
 
 
 # https://github.com/ThFriedrich/airpi/blob/main/ap_training/lr_scheduler.py
