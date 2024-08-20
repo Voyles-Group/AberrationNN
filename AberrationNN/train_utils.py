@@ -1,15 +1,88 @@
 import bisect
 import glob
+import math
 import os
 import re
 import time
+import random
+from copy import deepcopy
 import torch
 from scipy.interpolate import CubicSpline
 import matplotlib.pyplot as plt
 import numpy as np
+from torch import nn
 from torch.nn import Conv2d, ConvTranspose2d
 import subprocess
 from typing import List, Union
+
+
+def init_seeds(seed=0, deterministic=True):
+    """Initialize random number generator (RNG) seeds https://pytorch.org/docs/stable/notes/randomness.html."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)  # for Multi-GPU, exception safe
+    # torch.backends.cudnn.benchmark = True  # AutoBatch problem https://github.com/ultralytics/yolov5/issues/9287
+    if deterministic:
+        torch.use_deterministic_algorithms(True, warn_only=True)  # warn if deterministic is not possible
+        torch.use_deterministic_algorithms(True, warn_only=True)  # warn if deterministic is not possible
+        torch.backends.cudnn.deterministic = True
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+        os.environ["PYTHONHASHSEED"] = str(seed)
+
+    else:
+        torch.use_deterministic_algorithms(False)
+        torch.backends.cudnn.deterministic = False
+
+def de_parallel(model):
+    """De-parallelize a model: returns single-GPU model if model is of type DP or DDP."""
+    return model.module if isinstance(model, (nn.parallel.DataParallel, nn.parallel.DistributedDataParallel)) else model
+
+def copy_attr(a, b, include=(), exclude=()):
+    """Copies attributes from object 'b' to object 'a', with options to include/exclude certain attributes."""
+    for k, v in b.__dict__.items():
+        if (len(include) and k not in include) or k.startswith("_") or k in exclude:
+            continue
+        else:
+            setattr(a, k, v)
+
+class ModelEMA:
+    """Updated Exponential Moving Average (EMA) from https://github.com/rwightman/pytorch-image-models
+    Keeps a moving average of everything in the model state_dict (parameters and buffers)
+    For EMA details see https://www.tensorflow.org/api_docs/python/tf/train/ExponentialMovingAverage
+    To disable EMA set the `enabled` attribute to `False`.
+    """
+
+    def __init__(self, model, decay=0.9999, tau=2000, updates=0):
+        """Create EMA."""
+        self.ema = deepcopy(de_parallel(model)).eval()  # FP32 EMA
+        self.updates = updates  # number of EMA updates
+        self.decay = lambda x: decay * (1 - math.exp(-x / tau))  # decay exponential ramp (to help early epochs)
+        for p in self.ema.parameters():
+            p.requires_grad_(False)
+        self.enabled = True
+
+    def update(self, model):
+        """Update EMA parameters."""
+        if self.enabled:
+            self.updates += 1
+            d = self.decay(self.updates)
+
+            msd = de_parallel(model).state_dict()  # model state_dict
+            for k, v in self.ema.state_dict().items():
+                if v.dtype.is_floating_point:  # true for FP16 and FP32
+                    v *= d
+                    v += (1 - d) * msd[k].detach()
+                    # assert v.dtype == msd[k].dtype == torch.float32, f'{k}: EMA {v.dtype},  model {msd[k].dtype}'
+
+    def update_attr(self, model, include=(), exclude=("process_group", "reducer")):
+        """Updates attributes and saves stripped model with optimizer removed."""
+        if self.enabled:
+            copy_attr(self.ema, model, include, exclude)
+
 
 
 class EarlyStopping:
@@ -55,19 +128,6 @@ class EarlyStopping:
                 f"i.e. `patience=300` or use `patience=0` to disable EarlyStopping."
             )
         return stop
-
-
-def set_train_rng(seed: int = 1):
-    """
-    For reproducibility
-    """
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
 
 
 def weights_init(module):
@@ -155,42 +215,6 @@ class Parameters(SimpleNamespace):
         """Return the value of the specified key if it exists; otherwise, return the default value."""
         return getattr(self, key, default)
 
-
-# class Parameters:
-#     def __init__(self, loss, first_inputchannels, reduction, skip_connection, fca_block_n, if_CAB, if_FT, if_HP, pre_normalization, normalization, patch,
-#                  imagesize, downsampling, if_reference, batchsize, print_freq, learning_rate, learning_rate_0, epochs,
-#                  epochs_cycle_1, epochs_cycle, epochs_ramp, warmup, cooldown, lr_fact, weight_decay, **kwargs):
-#
-#         self.loss = loss
-#         self.first_inputchannels = first_inputchannels
-#         self.reduction = reduction
-#         self.skip_connection = skip_connection
-#         self.fca_block_n = fca_block_n
-#         self.if_FT = if_FT
-#         self.if_HP = if_HP
-#         self.if_CAB = if_CAB
-#         self.pre_normalization = pre_normalization
-#         self.normalization = normalization
-#         self.patch = patch
-#         self.imagesize = imagesize
-#         self.downsampling = downsampling
-#         self.if_reference = if_reference
-#         self.batchsize = batchsize
-#         self.print_freq = print_freq
-#         self.weight_decay = weight_decay
-#         self.learning_rate = learning_rate
-#         self.learning_rate_0 = learning_rate_0
-#         self.epochs = epochs
-#         self.epochs_cycle_1 = epochs_cycle_1
-#         self.epochs_cycle = epochs_cycle
-#         self.epochs_ramp = epochs_ramp
-#         self.warmup = warmup
-#         self.cooldown = cooldown
-#         self.lr_fact = lr_fact
-#
-#         self.data_path = kwargs.get('data_path')
-#         self.sava_path = kwargs.get('save_path')
-#         self.validation_data_path = kwargs.get('validation_data_path')
 
 
 # https://github.com/ThFriedrich/airpi/blob/main/ap_training/lr_scheduler.py
