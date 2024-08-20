@@ -4,6 +4,8 @@ import multiprocessing
 import os
 import time
 import warnings
+from copy import deepcopy
+from datetime import datetime
 from typing import Dict
 
 import numpy as np
@@ -70,7 +72,7 @@ class BaseTrainer:
         self.accumulate = max(round(self.pms.nbs / self.pms.batchsize),1) # accumulate loss before optimizing, nbs nominal batch size
         weight_decay = self.pms.weight_decay * self.pms.batchsize * self.accumulate / self.pms.nbs  # scale weight_decay
 
-        self.optimizer = self.build_optimizer(model=self.model,decay=weight_decay)
+        self.optimizer = self.build_optimizer(model=self.model, lr=self.pms.lr0, momentum=self.pms.momentum,decay=weight_decay)
         self.setup_scheduler()
         self.scheduler.last_epoch = - 1  # do not move
 
@@ -112,8 +114,9 @@ class BaseTrainer:
 
         if not os.path.exists(self.savepath):
             os.mkdir(self.savepath)
+        self.optimizer.zero_grad()
         self.train_cell(d_train, d_test)
-        torch.save({'ema': self.ema, 'state_dict': self.model.state_dict(),
+        torch.save({"date": datetime.now().isoformat(),'ema': deepcopy(self.ema.ema), 'state_dict': self.model.state_dict(),
                     'train': self.trainloss_total, 'test': self.testloss_total}, self.savepath + 'model_final.tar')
         plot_losses(self.trainloss_total, self.testloss_total, self.savepath)
 
@@ -138,9 +141,10 @@ class BaseTrainer:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")  # suppress 'Detected lr_scheduler.step() before optimizer.step()'
                 self.scheduler.step()
+
             self.model.train()  # turn on train mode!
 
-            self.optimizer.zero_grad()
+            # self.optimizer.zero_grad() # covered in optimizer_step()
             images_train= images_train.to(self.device)
             targets_train= targets_train.to(self.device)
 
@@ -166,18 +170,18 @@ class BaseTrainer:
                 self.trainloss_total.append(trainloss.item())
 
             # Backward
-            self.scaler.scale(trainloss).backward()
+            self.scaler.scale(trainloss).backward() #######################
                     # Save current learning rate and momentum
             for param_group in self.optimizer.param_groups:
                 self.lr_history.append(param_group['lr'])
-                if 'momentum' in param_group:
-                    self.momentum_history.append(param_group['momentum'])
+                if 'betas' in param_group:
+                    self.momentum_history.append(param_group['betas'])
                 else:
                     self.momentum_history.append(None)  # If momentum is not used
 
             # Optimize - https://pytorch.org/docs/master/notes/amp_examples.html
             if i - last_opt_step >= self.accumulate:
-                self.optimizer_step()
+                self.optimizer_step() #########################
                 last_opt_step = i
 
             if check_gradient:
@@ -211,8 +215,10 @@ class BaseTrainer:
 
             if not stop:
                 if self.stopper.best_epoch == i:
-                    torch.save({'ema': self.ema,'state_dict': self.model.state_dict(), 'epoch': self.stopper.best_epoch},
-                               self.savepath + 'model_bestepoch.tar')
+                    torch.save(
+                        {'ema': deepcopy(self.ema.ema),'state_dict': self.model.state_dict(),
+                         'epoch': self.stopper.best_epoch,"date": datetime.now().isoformat()},
+                        self.savepath + 'model_bestepoch.tar')
             else:
                 break
 
@@ -275,7 +281,7 @@ class BaseTrainer:
         optimizer.add_param_group({"params": g[0], "weight_decay": decay})  # add g0 with weight_decay
         optimizer.add_param_group({"params": g[1], "weight_decay": 0.0})  # add g1 (BatchNorm2d weights)
         print(
-            f"{'optimizer:'} {type(optimizer).__name__}(lr={lr}, momentum={momentum}) with parameter groups "
+            f"{'optimizer:'} {type(optimizer).__name__}(default lr={lr}, momentum={momentum}) with parameter groups "
             f'{len(g[1])} weight(decay=0.0), {len(g[0])} weight(decay={decay}), {len(g[2])} bias(decay=0.0)'
         )
         return optimizer

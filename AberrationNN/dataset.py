@@ -120,7 +120,8 @@ class Augmentation(object):
 class MagnificationDataset:
     """
     Default operations:
-    image: map01, downsample by 2, FFT, difference, FFT defocus patches - FFT overfocus patches
+    image: map01, downsample by 2, FFT, difference, FFT off-focus A patches - FFT off-focus B patches
+    (first key - second key)
     target: polar transformed into cartesian, all in angstroms.
     Example:
 
@@ -130,7 +131,8 @@ class MagnificationDataset:
                  transform=None, patch=32, imagesize=512, downsampling=2, if_HP=True):
         self.data_dir = data_dir
         filenum = len(os.listdir(data_dir))
-        nimage = np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz')['defocus'].shape[0]
+        self.keys = list(np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz').keys())
+        nimage = np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz')[self.keys[0]].shape[0]
         # folder name + index number 000-099
         self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
                     [*range(nimage)]]
@@ -225,7 +227,7 @@ class MagnificationDataset:
 
         path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
         crop = 64 + 128
-        image_in = np.load(path)['overfocus'][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
+        image_in = np.load(path)[self.keys[0]][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
         gpts = image_in.shape[0]
         sampling = target.get(['k_sampling_mrad']).to_numpy()[int(img_id[-3:])]
         k = (np.arange(gpts) - gpts / 2) * sampling * 1e-3
@@ -247,8 +249,8 @@ class MagnificationDataset:
     def get_image(self, img_id):
         path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
         crop = 64+128
-        image_o = np.load(path)['overfocus'][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
-        image_d = np.load(path)['defocus'][int(img_id[-3:])][crop:-crop, crop:-crop]
+        image_o = np.load(path)[self.keys[0]][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
+        image_d = np.load(path)[self.keys[1]][int(img_id[-3:])][crop:-crop, crop:-crop]
 
         # pick a patch
         rrange = int(image_o.shape[0] / self.patch / self.downsampling)
@@ -282,7 +284,7 @@ class MagnificationDataset:
         target = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')  ###########
         crop = 64+128
         path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
-        image_in = np.load(path)['overfocus'][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
+        image_in = np.load(path)[self.keys[0]][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
         gpts = image_in.shape[0]
         sampling = target.get(['k_sampling_mrad']).to_numpy()[int(img_id[-3:])]
         k = (np.arange(gpts) - gpts / 2) * sampling * 1e-3
