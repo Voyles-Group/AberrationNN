@@ -249,8 +249,8 @@ class MagnificationDataset:
                         xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
                         yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling])
         image_aberration = self.singleFFT(data)
-        if image_aberration.shape[0] > self.fftcropsize:
-            image_aberration = image_aberration[self.fftcropsize//2: -self.fftcropsize//2, self.fftcropsize//2: -self.fftcropsize//2]
+        if image_aberration.shape[-1] > self.fftcropsize:
+            image_aberration = image_aberration[:, self.fftcropsize//2: -self.fftcropsize//2, self.fftcropsize//2: -self.fftcropsize//2]
 
         try:
             path_rf = self.data_dir + img_id[:-3] + '/standard_reference_d_o.npy'
@@ -267,8 +267,8 @@ class MagnificationDataset:
                             xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
                             yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling])
         image_reference = self.singleFFT(data_rf)
-        if image_reference.shape[0] > self.fftcropsize:
-            image_reference = image_reference[self.fftcropsize//2: -self.fftcropsize//2, self.fftcropsize//2: -self.fftcropsize//2]
+        if image_reference.shape[-1] > self.fftcropsize:
+            image_reference = image_reference[:, self.fftcropsize//2: -self.fftcropsize//2, self.fftcropsize//2: -self.fftcropsize//2]
 
         return torch.cat([image_aberration, image_reference]), xi, yi
 

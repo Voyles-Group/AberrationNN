@@ -7,7 +7,7 @@ import warnings
 from copy import deepcopy
 from datetime import datetime
 from typing import Dict
-
+import json
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
@@ -56,13 +56,16 @@ class BaseTrainer:
         self.pms = Parameters(**hyperdict)
         self.savepath = savepath
 
+        with open(self.savepath + 'hyperdict.json', 'w') as fp:
+            json.dump(hyperdict, fp)
+
     def train(self):
 
         # Initialize model
         init_seeds(1)
         self.model = MagnificationNet(first_inputchannels=self.pms.first_inputchannels, reduction=self.pms.reduction,
                                       skip_connection=self.pms.reduction,fca_block_n=self.pms.fca_block_n, if_FT=self.pms.if_FT,
-                                      if_CAB=self.pms.if_CAB)
+                                      if_CAB=self.pms.if_CAB, patch=self.pms.patch)
         self.model.to(self.device)
         self.model.apply(weights_init)
 
@@ -120,6 +123,7 @@ class BaseTrainer:
         self.train_cell(self.d_train, self.d_test)
         torch.save({"date": datetime.now().isoformat(),'ema': deepcopy(self.ema.ema), 'state_dict': self.model.state_dict(),
                     'train': self.trainloss_total, 'test': self.testloss_total}, self.savepath + 'model_final.tar')
+
         plot_losses(self.trainloss_total, self.testloss_total, self.savepath)
 
         return self.model
