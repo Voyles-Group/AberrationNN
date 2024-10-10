@@ -55,6 +55,7 @@ class BaseTrainer:
         self.device = torch.device(device)
         self.pms = Parameters(**hyperdict)
         self.savepath = savepath
+        self.patience = self.pms.patience
 
         with open(self.savepath + 'hyperdict.json', 'w') as fp:
             json.dump(hyperdict, fp)
@@ -69,7 +70,7 @@ class BaseTrainer:
         self.model.to(self.device)
         self.model.apply(weights_init)
 
-        self.stopper = EarlyStopping(patience=100)  #########################################
+        self.stopper = EarlyStopping(patience=self.patience)  #########################################
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.pms.amp)  # automatic mixed precision training for speeding up and save memory
         self.ema = ModelEMA(self.model)
         self.accumulate = max(round(self.pms.nbs / self.pms.batchsize),1) # accumulate loss before optimizing, nbs nominal batch size
@@ -112,7 +113,7 @@ class BaseTrainer:
             num_workers=int(pool._processes / 2))
 
         self.d_test = torch.utils.data.DataLoader(
-            dataset_test, batch_size=self.pms.batchsize, shuffle=False, pin_memory=True,
+            dataset_test, batch_size=self.pms.batchsize, shuffle=True, pin_memory=True,
             num_workers=int(pool._processes / 2))
 
         print('##############################START TRAINING ######################################')
@@ -141,7 +142,7 @@ class BaseTrainer:
         record = time.time()
 
         # note: I will still keep the iteration loop and no real epoch loop
-        for i, ((images_train, targets_train), (images_test, targets_test)) in enumerate(
+        for i, ((images_train, targets_train, _), (images_test, targets_test, _)) in enumerate(
                 zip(data_loader_train, data_loader_test)):
 
             with warnings.catch_warnings():

@@ -165,7 +165,8 @@ class MagnificationDataset:
                    yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling].mean()
         target = [pick_du2, pick_dv2, pick_duv]
         target = torch.as_tensor(target, dtype=torch.float32)
-        return image, target
+        meta = self.get_meta(img_id)
+        return image, target, meta
 
     def __len__(self):
         return len(self.ids)
@@ -271,6 +272,11 @@ class MagnificationDataset:
             image_reference = image_reference[:, self.fftcropsize//2: -self.fftcropsize//2, self.fftcropsize//2: -self.fftcropsize//2]
 
         return torch.cat([image_aberration, image_reference]), xi, yi
+
+    def get_meta(self, img_id):
+        meta = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')  ###########
+        meta = meta.get(['thicknessA', 'tiltx', 'tilty', 'Cs']).to_numpy()[int(img_id[-3:])]
+        return meta
 
     def get_target(self, img_id):
         # return shape need to be [x]
