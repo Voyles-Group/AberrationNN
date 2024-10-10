@@ -74,6 +74,8 @@ def gaussKernel(sigma, imsize):
 
 
 def apply_incoherence(array3d, sigma):
+    if array3d.ndim == 2:
+        array3d = array3d[None, ...]
     virtural_arraysize = (5, 5)
     imsize = array3d.shape[1:]
     out_sz = virtural_arraysize + imsize
@@ -270,11 +272,11 @@ def main(x, focusstepA=2000, focusstepB=3000, withprocess=True, withstandard=Tru
             source_size = 110
             px_size = 10  # 0.1A
             sigma = (source_size / px_size) / (2.355)
-            result_A = apply_incoherence(ronchi_A, sigma)
-            result_B = apply_incoherence(ronchi_B, sigma)
+            result_A = apply_incoherence(standard_A, sigma)
+            result_B = apply_incoherence(standard_B, sigma)
 
 
-        np.savez(savepath + foldername + '/standard_reference.npz', A = result_A, B = result_B)
+        np.savez(savepath + foldername + '/standard_reference.npz', A = result_A.squeeze(), B = result_B.squeeze())
 
         print('Worker', os.getpid(), 'Finished standard simulation')
     return aberrationpoints

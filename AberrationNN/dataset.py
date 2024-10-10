@@ -128,10 +128,13 @@ class MagnificationDataset:
     """
 
     def __init__(self, data_dir, filestart=0, pre_normalization=False, normalization=True,
-                 transform=None, patch=32, imagesize=512, downsampling=2, if_HP=True):
+                 transform=None, patch=32, imagesize=512, downsampling=2, fft_pad_factor = 2, fftcropsize = 128, if_HP=True, picked_keys=None):
+        if picked_keys is None:
+            picked_keys = [0, 1]
+        self.picked_keys = picked_keys
+        self.keys = np.array(list(np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz').keys()))[self.picked_keys]
         self.data_dir = data_dir
         filenum = len(os.listdir(data_dir))
-        self.keys = list(np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz').keys())
         nimage = np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz')[self.keys[0]].shape[0]
         # folder name + index number 000-099
         self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
@@ -144,7 +147,8 @@ class MagnificationDataset:
         self.imagesize = imagesize
         self.downsampling = downsampling
         self.if_HP = if_HP
-        self.fft_pad_factor = 2
+        self.fft_pad_factor = fft_pad_factor
+        self.fftcropsize = fftcropsize
 
     def __getitem__(self, i):
         img_id = self.ids[i]  # folder names and index number 000-099
@@ -166,19 +170,8 @@ class MagnificationDataset:
     def __len__(self):
         return len(self.ids)
 
-    def singleFFT(self, im_o, im_d):
-        if self.if_HP:
-            picked_o = hp_filter(im_o)
-            picked_d = hp_filter(im_d)
-        picked_o = torch.as_tensor(picked_o, dtype=torch.float32)
-        picked_d = torch.as_tensor(picked_d, dtype=torch.float32)
-        if self.downsampling is not None and self.downsampling > 1:
-            picked_o = F.interpolate(picked_o[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
-            picked_d = F.interpolate(picked_d[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
-        if self.transform:
-            picked_o = self.transform(picked_o)
-            picked_d = self.transform(picked_d)
-
+    def singleFFT(self, im_list):
+        ffts = []
         isize = self.patch * self.fft_pad_factor
         csize = isize
         topc = isize // 2 - csize // 2
@@ -186,40 +179,35 @@ class MagnificationDataset:
         bottomc = isize // 2 + csize // 2
         rightc = isize // 2 + csize // 2
 
-        hanning = np.outer(np.hanning(self.patch), np.hanning(self.patch))  # A 2D hanning window with the same size as image
+        hanning = np.outer(np.hanning(self.patch),
+                           np.hanning(self.patch))  # A 2D hanning window with the same size as image
 
         top = isize // 2 - self.patch // 2
         left = isize // 2 - self.patch // 2
         bottom = isize // 2 + self.patch // 2
         right = isize // 2 + self.patch // 2
+        for im in im_list:
+            picked = im
+            if self.if_HP:
+                picked = hp_filter(im)
+                picked = torch.as_tensor(picked, dtype=torch.float32)
+            if self.downsampling is not None and self.downsampling > 1:
+                picked = F.interpolate(picked[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+            if self.transform:
+                picked = self.transform(picked)
 
-        if self.pre_normalization:
-            picked_d = map01(picked_o)
-        tmp = torch.zeros((isize, isize))
-        tmp[top:bottom, left:right] = picked_o * hanning
-        tmpft = torch.fft.fft2(tmp)
-        tmpft = torch.fft.fftshift(tmpft)
-        fft_o = np.abs(tmpft[topc:bottomc, leftc:rightc])
-        #####################################################################################
-        if self.pre_normalization:
-            picked_d = map01(picked_d)
-        tmp = torch.zeros((isize, isize))
-        tmp[top:bottom, left:right] = picked_d * hanning
-        tmpft = torch.fft.fft2(tmp)
-        tmpft = torch.fft.fftshift(tmpft)
-        fft_d = np.abs(tmpft[topc:bottomc, leftc:rightc])
+            if self.pre_normalization:
+                picked = map01(picked)
+            tmp = torch.zeros((isize, isize))
+            tmp[top:bottom, left:right] = picked * hanning
+            tmpft = torch.fft.fft2(tmp)
+            tmpft = torch.fft.fftshift(tmpft)
+            fft = np.abs(tmpft[topc:bottomc, leftc:rightc])
 
-        # image = fft_o - fft_d
-        #
-        # if self.normalization:
-        #     image = torch.where(image >= 0, image / image.max(), -image / image.min())
-
-        # afraid the difference patch cancel out some dots, so keep all four patches.
-        if self.normalization:
-            fft_o = (fft_o - fft_o.min()) / (fft_o.max()-fft_o.min())
-            fft_d = (fft_d - fft_d.min()) / (fft_d.max()-fft_d.min())
-
-        return torch.cat([fft_o[None, ...], fft_d[None, ...]])
+            if self.normalization:
+                fft = (fft - fft.min()) / (fft.max()-fft.min())
+            ffts.append(fft)
+        return torch.cat([it[None, ...] for it in ffts])
 
     def check_chi(self, img_id):
         # just calculate the whole function array here, no downsampling considered
@@ -249,32 +237,38 @@ class MagnificationDataset:
     def get_image(self, img_id):
         path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
         crop = 64+128
-        image_o = np.load(path)[self.keys[0]][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
-        image_d = np.load(path)[self.keys[1]][int(img_id[-3:])][crop:-crop, crop:-crop]
-
-        # pick a patch
-        rrange = int(image_o.shape[0] / self.patch / self.downsampling)
+        image = np.load(path)[self.keys[0]][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
+        rrange = int(image.shape[0] / self.patch / self.downsampling)
         xi = randrange(0, rrange)
         yi = randrange(0, rrange)
-        picked_o = image_o[
-                   xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
-                   yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling]
-        picked_d = image_d[
-                   xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
-                   yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling]
+        data, data_rf = [], []
+        for k in self.keys:
+            image = np.load(path)[k][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
+            # pick a patch
+            data.append(image[
+                        xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
+                        yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling])
+        image_aberration = self.singleFFT(data)
+        if image_aberration.shape[0] > self.fftcropsize:
+            image_aberration = image_aberration[self.fftcropsize//2: -self.fftcropsize//2, self.fftcropsize//2: -self.fftcropsize//2]
 
-        image_aberration = self.singleFFT(picked_o, picked_d)
-
-        path_rf = self.data_dir + img_id[:-3] + '/standard_reference_d_o.npy'
-        image_o = np.load(path_rf)[1][crop:-crop, crop:-crop]  # crop the outer border
-        image_d = np.load(path_rf)[0][crop:-crop, crop:-crop]
-        picked_o = image_o[
-                   xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
-                   yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling]
-        picked_d = image_d[
-                   xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
-                   yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling]
-        image_reference = self.singleFFT(picked_o, picked_d)
+        try:
+            path_rf = self.data_dir + img_id[:-3] + '/standard_reference_d_o.npy'
+            for i in range(len(self.keys)):
+                croped = np.load(path_rf)[i][crop:-crop, crop:-crop]
+                data_rf.append(croped[
+                        xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
+                        yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling]) # crop the outer border
+        except:
+            path_rf = self.data_dir + img_id[:-3] + '/standard_reference.npz'
+            for k in self.keys:
+                croped = np.load(path_rf)[k][crop:-crop, crop:-crop]
+                data_rf.append(croped[
+                            xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
+                            yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling])
+        image_reference = self.singleFFT(data_rf)
+        if image_reference.shape[0] > self.fftcropsize:
+            image_reference = image_reference[self.fftcropsize//2: -self.fftcropsize//2, self.fftcropsize//2: -self.fftcropsize//2]
 
         return torch.cat([image_aberration, image_reference]), xi, yi
 
@@ -302,11 +296,10 @@ class MagnificationDataset:
         del polar_h['focus_spread_A']
 
         car = polar2cartesian({**polar_l, **polar_h})
+        return evaluate_aberration_derivative_cartesian(car, kxx, kyy, wavelength_A*1e-10)
 
-        all_derivatives = evaluate_aberration_derivative_cartesian(car, kxx, kyy, wavelength_A*1e-10)
-
-        return all_derivatives
-
+    def data_shape(self):
+        return self.get_image(self.ids[0])[0].shape
 
 class RonchiTiltPairAll:
 

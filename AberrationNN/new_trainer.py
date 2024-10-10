@@ -41,6 +41,7 @@ def plot_losses(train_loss, test_loss, savepath) -> None:
 
 class BaseTrainer:
     def __init__(self,data_path: str, device: str, hyperdict: Dict, savepath: str):
+        self.d_train, self.d_test = None, None
         self.lr_history, self.momentum_history = [],[]
         self.trainloss_total, self.testloss_total = [],[]
         self.accumulate = None
@@ -60,13 +61,12 @@ class BaseTrainer:
         # Initialize model
         init_seeds(1)
         self.model = MagnificationNet(first_inputchannels=self.pms.first_inputchannels, reduction=self.pms.reduction,
-                                      skip_connection=self.pms.reduction,
-                                      fca_block_n=self.pms.fca_block_n, if_FT=self.pms.if_FT,
+                                      skip_connection=self.pms.reduction,fca_block_n=self.pms.fca_block_n, if_FT=self.pms.if_FT,
                                       if_CAB=self.pms.if_CAB)
         self.model.to(self.device)
         self.model.apply(weights_init)
 
-        self.stopper = EarlyStopping(patience=500)  #########################################
+        self.stopper = EarlyStopping(patience=100)  #########################################
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.pms.amp)  # automatic mixed precision training for speeding up and save memory
         self.ema = ModelEMA(self.model)
         self.accumulate = max(round(self.pms.nbs / self.pms.batchsize),1) # accumulate loss before optimizing, nbs nominal batch size
@@ -79,18 +79,20 @@ class BaseTrainer:
 
         # Initialize dataset
         dataset = MagnificationDataset(self.data_path, filestart=0, transform=None, pre_normalization=self.pms.pre_normalization,
-                                       normalization=self.pms.normalization,
+                                       normalization=self.pms.normalization, picked_keys=self.pms.data_keys,
                                        patch=self.pms.patch, imagesize=self.pms.imagesize, downsampling=self.pms.downsampling,
-                                       if_HP=self.pms.if_HP)
-
+                                       if_HP=self.pms.if_HP, fft_pad_factor = self.pms.fft_pad_factor, fftcropsize = self.pms.fftcropsize)
+        print("The input data shape is ", dataset.data_shape())
         aug_N = int(self.pms.epochs / (dataset.__len__() * 0.4 / self.pms.batchsize))
         datasets = []
         for i in range(aug_N):
             datasets.append(MagnificationDataset(self.data_path, filestart=0, pre_normalization=self.pms.pre_normalization,
-                                                 normalization=self.pms.normalization,
+                                                 normalization=self.pms.normalization, picked_keys=self.pms.data_keys,
                                                  patch=self.pms.patch, imagesize=self.pms.imagesize,
                                                  downsampling=self.pms.downsampling,
-                                                 transform=Augmentation(2), if_HP=self.pms.if_HP))
+                                                 transform=Augmentation(2), if_HP=self.pms.if_HP,
+                                                 fft_pad_factor=self.pms.fft_pad_factor,fftcropsize=self.pms.fftcropsize
+                                                 ))
 
         repeat_dataset = data.ConcatDataset([dataset] + datasets)
 
@@ -102,11 +104,11 @@ class BaseTrainer:
 
         pool = multiprocessing.Pool()
         # define training and validation data loaders
-        d_train = torch.utils.data.DataLoader(
+        self.d_train = torch.utils.data.DataLoader(
             dataset_train, batch_size=self.pms.batchsize, shuffle=True, pin_memory=True,
             num_workers=int(pool._processes / 2))
 
-        d_test = torch.utils.data.DataLoader(
+        self.d_test = torch.utils.data.DataLoader(
             dataset_test, batch_size=self.pms.batchsize, shuffle=False, pin_memory=True,
             num_workers=int(pool._processes / 2))
 
@@ -115,7 +117,7 @@ class BaseTrainer:
         if not os.path.exists(self.savepath):
             os.mkdir(self.savepath)
         self.optimizer.zero_grad()
-        self.train_cell(d_train, d_test)
+        self.train_cell(self.d_train, self.d_test)
         torch.save({"date": datetime.now().isoformat(),'ema': deepcopy(self.ema.ema), 'state_dict': self.model.state_dict(),
                     'train': self.trainloss_total, 'test': self.testloss_total}, self.savepath + 'model_final.tar')
         plot_losses(self.trainloss_total, self.testloss_total, self.savepath)
@@ -144,7 +146,7 @@ class BaseTrainer:
 
             self.model.train()  # turn on train mode!
 
-            # self.optimizer.zero_grad() # covered in optimizer_step()
+            self.optimizer.zero_grad() # YOU HAVE TO KEEP THIS. Do not remove
             images_train= images_train.to(self.device)
             targets_train= targets_train.to(self.device)
 
