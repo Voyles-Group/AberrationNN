@@ -2,8 +2,10 @@ import numpy as np
 from collections import defaultdict
 from typing import Union, Dict
 
+def wrap_phase(phases):
+    return (phases + np.pi) % (2 * np.pi) - np.pi
 
-def evaluate_aberration_derivative_cartesian(cartiaberration: Dict, u: Union[float, np.ndarray], v: Union[float, np.ndarray], wavelength) -> Union[float, np.ndarray]:
+def evaluate_aberration_derivative_cartesian(cartiaberration: Dict, u: Union[float, np.ndarray], v: Union[float, np.ndarray], wavelength, if_highorder) -> Union[float, np.ndarray]:
     p = cartiaberration.copy()
     p.update((x, y*1e-10) for x, y in p.items())
 
@@ -20,32 +22,34 @@ def evaluate_aberration_derivative_cartesian(cartiaberration: Dict, u: Union[flo
         du2 = du2 + (p['C21a'] * 2 * u + p['C21b'] * 2 * v + p['C23a'] * 6 * u - p['C23b'] * 6 * v)
         dv2 = dv2 + (p['C21a'] * 2 * u + p['C21b'] * 2 * v - p['C23a'] * 6 * u + p['C23b'] * 6 * v)
         duv = duv + (p['C21a'] * 2 * u + p['C21b'] * 2 * v - p['C23a'] * 6 * v + p['C23b'] * 6 * u)
+    if if_highorder:
 
-    if any([p[symbol] != 0. for symbol in ('C32a', 'C32b', 'C34a', 'C34b')]):
-        du2 = du2 + p['C32a'] * u**2 + 6 * p['C32b'] * u * v + 12 * p['C34a'] * u**2 - 12 * p['C34a'] * v**2 + 24 * p['C34b'] * u * v
-        dv2 = dv2 - 6 * p['C32a'] * v**2 + 6 * p['C32b'] * u * v - 12 * p['C34a'] * u**2 + 12 * p['C34a'] * v**2 - 24 * p['C34b'] * u * v
-        duv = duv + 6 * p['C32b'] * (u**2 + v**2) - 24 * p['C34a'] * u * v + 12 * p['C34a'] * (u**2 - v**2)
+        if any([p[symbol] != 0. for symbol in ('C32a', 'C32b', 'C34a', 'C34b')]):
+            du2 = du2 + p['C32a'] * u**2 + 6 * p['C32b'] * u * v + 12 * p['C34a'] * u**2 - 12 * p['C34a'] * v**2 + 24 * p['C34b'] * u * v
+            dv2 = dv2 - 6 * p['C32a'] * v**2 + 6 * p['C32b'] * u * v - 12 * p['C34a'] * u**2 + 12 * p['C34a'] * v**2 - 24 * p['C34b'] * u * v
+            duv = duv + 6 * p['C32b'] * (u**2 + v**2) - 24 * p['C34a'] * u * v + 12 * p['C34a'] * (u**2 - v**2)
 
-    if any([p[symbol] != 0. for symbol in ('C41a', 'C41b', 'C43a', 'C43b', 'C45a', 'C45b')]):
-        du2 = du2 + p['C41a'] * (6 * u**2 + 2 * v**2) + \
-              p['C41b'] * 2 * u * v + p['C43a'] * (24 * u**4 + 24 * u**2 * v**2 - 18 * u**2 - 6 * v**2) +\
-              p['C43b'] * (-12 * u * v**3 + 18 * u * v) + p['C45a'] * (30 * u**4 - 60 * u**2 * v**2 + 10 * v**4) +\
-              p['C45b'] * (20 * u**3 * v - 30 * u * v**3)
-        dv2 = dv2 + p['C41a'] ** 2 * u * v + \
-              p['C41b'] * (2 * u**2 + 6 * v**2) + p['C43a'] * (-12 * u**3 * v + 18 * u * v) + \
-              p['C43b'] * (-24 * v**4 - 24 * u**2 * v**2 + 6 * u**2 + 18 * v**2) + \
-              p['C45a'] * (-20 * u**3 * v + 30 * u * v**3) + \
-              p['C45b'] * (30 * v**4 - 60 * u**2 * v**2 + 10 * u**4)
-        duv = duv + p['C41a'] * (2 * u**2 + 4 * v**2) + \
-              p['C41b'] * (4 * u**2 + 2 * v**2) + p['C43a'] * (12 * u**2 * v - 6 * v**3 - 18 * u**2 * v) + \
-              p['C43b'] * (-12 * u * v**2 + 6 * u**3 + 18 * u * v**2) + \
-              p['C45a'] * (5 * u**4 - 30 * u**2 * v**2 + 20 * v**4) + \
-              p['C45b'] * (20 * u**4 - 30 * u**2 * v**2 + 5 * v**4)
+        if any([p[symbol] != 0. for symbol in ('C41a', 'C41b', 'C43a', 'C43b', 'C45a', 'C45b')]):
+            du2 = du2 + p['C41a'] * (6 * u**2 + 2 * v**2) + \
+                  p['C41b'] * 2 * u * v + p['C43a'] * (24 * u**4 + 24 * u**2 * v**2 - 18 * u**2 - 6 * v**2) +\
+                  p['C43b'] * (-12 * u * v**3 + 18 * u * v) + p['C45a'] * (30 * u**4 - 60 * u**2 * v**2 + 10 * v**4) +\
+                  p['C45b'] * (20 * u**3 * v - 30 * u * v**3)
+            dv2 = dv2 + p['C41a'] ** 2 * u * v + \
+                  p['C41b'] * (2 * u**2 + 6 * v**2) + p['C43a'] * (-12 * u**3 * v + 18 * u * v) + \
+                  p['C43b'] * (-24 * v**4 - 24 * u**2 * v**2 + 6 * u**2 + 18 * v**2) + \
+                  p['C45a'] * (-20 * u**3 * v + 30 * u * v**3) + \
+                  p['C45b'] * (30 * v**4 - 60 * u**2 * v**2 + 10 * u**4)
+            duv = duv + p['C41a'] * (2 * u**2 + 4 * v**2) + \
+                  p['C41b'] * (4 * u**2 + 2 * v**2) + p['C43a'] * (12 * u**2 * v - 6 * v**3 - 18 * u**2 * v) + \
+                  p['C43b'] * (-12 * u * v**2 + 6 * u**3 + 18 * u * v**2) + \
+                  p['C45a'] * (5 * u**4 - 30 * u**2 * v**2 + 20 * v**4) + \
+                  p['C45b'] * (20 * u**4 - 30 * u**2 * v**2 + 5 * v**4)
 
     du2 = 2*np.pi/wavelength*du2
     dv2 = 2*np.pi/wavelength*dv2
     duv = 2*np.pi/wavelength*duv
     return [du2, dv2, duv]
+
 
 # Ref https://github.com/abTEM/abTEM/blob/b2338a44c4b76dcdbe26c8a491bfba77aaca0500/abtem/transfer.py#L1127  _evaluate_from_angular_grid()
 def evaluate_aberration_polar(polaraberration: Dict, alpha: Union[float, np.ndarray], phi: Union[float, np.ndarray],

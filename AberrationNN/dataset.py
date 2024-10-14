@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import torch
 import os
@@ -124,11 +126,14 @@ class MagnificationDataset:
     (first key - second key)
     target: polar transformed into cartesian, all in angstroms.
     Example:
+    :argument:
+
 
     """
 
     def __init__(self, data_dir, filestart=0, pre_normalization=False, normalization=True,
-                 transform=None, patch=32, imagesize=512, downsampling=2, fft_pad_factor = 2, fftcropsize = 128, if_HP=True, picked_keys=None):
+                 transform=None, patch=64, imagesize=512, cropsize = 192, overlap=0, downsampling=1, fft_pad_factor = 4,
+                 fftcropsize = 128, if_HP=True, target_high_order=False, picked_keys=None):
         if picked_keys is None:
             picked_keys = [0, 1]
         self.picked_keys = picked_keys
@@ -145,10 +150,13 @@ class MagnificationDataset:
         self.transform = transform
         self.patch = patch
         self.imagesize = imagesize
+        self.cropsize = cropsize
         self.downsampling = downsampling
         self.if_HP = if_HP
         self.fft_pad_factor = fft_pad_factor
         self.fftcropsize = fftcropsize
+        self.target_high_order = target_high_order
+        self.overlap = overlap
 
     def __getitem__(self, i):
         img_id = self.ids[i]  # folder names and index number 000-099
@@ -215,8 +223,8 @@ class MagnificationDataset:
         target = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')  ###########
 
         path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
-        crop = 64 + 128
-        image_in = np.load(path)[self.keys[0]][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
+        image_in = np.load(path)[self.keys[0]][int(img_id[-3:])][self.cropsize:-self.cropsize,
+                   self.cropsize:-self.cropsize]  # crop the outer border
         gpts = image_in.shape[0]
         sampling = target.get(['k_sampling_mrad']).to_numpy()[int(img_id[-3:])]
         k = (np.arange(gpts) - gpts / 2) * sampling * 1e-3
@@ -230,21 +238,20 @@ class MagnificationDataset:
         car = polar2cartesian(polar)
         phase_shift = evaluate_aberration_cartesian(car, kxx, kyy, wavelength_A*1e-10)
         if phase_shift.max() > (2 * np.pi):
-            print('Exceeded')
+            print('Exceeded 2 pi')
             return phase_shift
         else:
             return phase_shift
 
     def get_image(self, img_id):
         path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
-        crop = 64+128
-        image = np.load(path)[self.keys[0]][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
+        image = np.load(path)[self.keys[0]][int(img_id[-3:])][self.cropsize:-self.cropsize, self.cropsize:-self.cropsize]  # crop the outer border
         rrange = int(image.shape[0] / self.patch / self.downsampling)
         xi = randrange(0, rrange)
         yi = randrange(0, rrange)
         data, data_rf = [], []
         for k in self.keys:
-            image = np.load(path)[k][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
+            image = np.load(path)[k][int(img_id[-3:])][self.cropsize:-self.cropsize, self.cropsize:-self.cropsize]  # crop the outer border
             # pick a patch
             data.append(image[
                         xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
@@ -256,14 +263,14 @@ class MagnificationDataset:
         try:
             path_rf = self.data_dir + img_id[:-3] + '/standard_reference_d_o.npy'
             for i in range(len(self.keys)):
-                croped = np.load(path_rf)[i][crop:-crop, crop:-crop]
+                croped = np.load(path_rf)[i][self.cropsize:-self.cropsize, self.cropsize:-self.cropsize]
                 data_rf.append(croped[
                         xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
                         yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling]) # crop the outer border
         except:
             path_rf = self.data_dir + img_id[:-3] + '/standard_reference.npz'
             for k in self.keys:
-                croped = np.load(path_rf)[k][crop:-crop, crop:-crop]
+                croped = np.load(path_rf)[k][self.cropsize:-self.cropsize, self.cropsize:-self.cropsize]
                 data_rf.append(croped[
                             xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
                             yi * self.patch * self.downsampling: (yi + 1) * self.patch * self.downsampling])
@@ -275,16 +282,16 @@ class MagnificationDataset:
 
     def get_meta(self, img_id):
         meta = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')  ###########
-        meta = meta.get(['thicknessA', 'tiltx', 'tilty', 'Cs']).to_numpy()[int(img_id[-3:])]
+        meta = meta.get(['thicknessA', 'tiltx', 'tilty', 'C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[int(img_id[-3:])]
         return meta
 
     def get_target(self, img_id):
         # return shape need to be [x]
         # just calculate the whole function array here, no downsampling considered
         target = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')  ###########
-        crop = 64+128
         path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
-        image_in = np.load(path)[self.keys[0]][int(img_id[-3:])][crop:-crop, crop:-crop]  # crop the outer border
+        image_in = np.load(path)[self.keys[0]][int(img_id[-3:])][self.cropsize:-self.cropsize,
+                   self.cropsize:-self.cropsize]  # crop the outer border
         gpts = image_in.shape[0]
         sampling = target.get(['k_sampling_mrad']).to_numpy()[int(img_id[-3:])]
         k = (np.arange(gpts) - gpts / 2) * sampling * 1e-3
@@ -302,10 +309,39 @@ class MagnificationDataset:
         del polar_h['focus_spread_A']
 
         car = polar2cartesian({**polar_l, **polar_h})
-        return evaluate_aberration_derivative_cartesian(car, kxx, kyy, wavelength_A*1e-10)
+        return evaluate_aberration_derivative_cartesian(car, kxx, kyy, wavelength_A*1e-10, if_highorder=self.target_high_order)
 
     def data_shape(self):
         return self.get_image(self.ids[0])[0].shape
+
+    def get_wholeimage_eval(self, img_id):
+        #### downsampling not considered here yet
+        alldata = []
+
+        for k in self.keys:
+            path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
+            image = np.load(path)[k][int(img_id[-3:])][self.cropsize:-self.cropsize, self.cropsize:-self.cropsize]  # crop the outer border
+            image = torch.from_numpy(image).float()
+            windows = image.unfold(0, self.patch, self.patch - self.overlap)
+            windows = windows.unfold(1, self.patch, self.patch - self.overlap)
+
+            image_aberration = self.singleFFT(list(torch.flatten(windows, start_dim=0, end_dim=1)))
+            if image_aberration.shape[-1] > self.fftcropsize:
+                image_aberration = image_aberration[:, self.fftcropsize//2: -self.fftcropsize//2, self.fftcropsize//2: -self.fftcropsize//2]
+            alldata.append(image_aberration)
+        for k in self.keys:
+            path_rf = self.data_dir + img_id[:-3] + '/standard_reference.npz'
+            cropped = np.load(path_rf)[k][self.cropsize:-self.cropsize, self.cropsize:-self.cropsize]
+            cropped = torch.from_numpy(cropped).float()
+            windows_ = cropped.unfold(0, self.patch, self.patch - self.overlap)
+            windows_ = windows_.unfold(1, self.patch, self.patch - self.overlap)
+            image_reference = self.singleFFT(list(torch.flatten(windows_, start_dim=0, end_dim=1)))
+            if image_reference.shape[-1] > self.fftcropsize:
+                image_reference = image_reference[:, self.fftcropsize//2: -self.fftcropsize//2, self.fftcropsize//2: -self.fftcropsize//2]
+            alldata.append(image_reference)
+
+        return torch.swapaxes(torch.stack(alldata),0,1)
+
 
 class RonchiTiltPairAll:
 

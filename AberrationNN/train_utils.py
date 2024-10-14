@@ -84,7 +84,6 @@ class ModelEMA:
             copy_attr(self.ema, model, include, exclude)
 
 
-
 class EarlyStopping:
     """Early stopping class that stops training when a specified number of epochs have passed without improvement."""
 

@@ -13,7 +13,7 @@ def gelu(x):
 class MagnificationNet(nn.Module):
     def __init__(self,
                  first_inputchannels=4, reduction=1,
-                 skip_connection=False, fca_block_n=2, if_FT=True, if_CAB=True, patch = 32):
+                 skip_connection=False, fca_block_n=2, if_FT=True, if_CAB=True, patch = 32, fft_pad_factor=4):
         super(MagnificationNet, self).__init__()
         self.reduction = reduction
         self.skip_connection = skip_connection
@@ -23,7 +23,9 @@ class MagnificationNet(nn.Module):
 
         # patch = round(256 / math.sqrt(first_inputchannels))
         # when first_inputchannels includes the reference,the int round make it still work.
-        self.patch = patch  # assuming that I will not tune the patch size later
+        self.patch = patch
+        self.fft_pad_factor = fft_pad_factor
+
         self.cab1 = CoordAttentionBlock(input_channels=first_inputchannels, reduction=self.reduction)
         self.cab2 = CoordAttentionBlock(input_channels=first_inputchannels * 2, reduction=self.reduction)
         self.cab3 = CoordAttentionBlock(input_channels=first_inputchannels * 4, reduction=self.reduction)
@@ -44,7 +46,7 @@ class MagnificationNet(nn.Module):
         self.cov0 = nn.Conv2d(first_inputchannels, first_inputchannels, kernel_size=3, stride=1, padding='same')
         self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels * 2, kernel_size=3, stride=1, padding='same')
         self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
-        self.dense1 = nn.Linear(first_inputchannels * 4 * int(self.patch * 2 / 8) ** 2,
+        self.dense1 = nn.Linear(first_inputchannels * 4 * int(self.patch * self.fft_pad_factor / 8) ** 2,
                                 # the * 2 is the FFT padding factor 2.
                                 int(math.sqrt(first_inputchannels)) * self.patch * 2 * 2)
         self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * self.patch * 2 * 2,

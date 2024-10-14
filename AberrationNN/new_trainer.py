@@ -66,7 +66,7 @@ class BaseTrainer:
         init_seeds(1)
         self.model = MagnificationNet(first_inputchannels=self.pms.first_inputchannels, reduction=self.pms.reduction,
                                       skip_connection=self.pms.reduction,fca_block_n=self.pms.fca_block_n, if_FT=self.pms.if_FT,
-                                      if_CAB=self.pms.if_CAB, patch=self.pms.patch)
+                                      if_CAB=self.pms.if_CAB, patch=self.pms.patch, fft_pad_factor=self.pms.fft_pad_factor,)
         self.model.to(self.device)
         self.model.apply(weights_init)
 
