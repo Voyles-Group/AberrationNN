@@ -161,7 +161,15 @@ class BaseTrainer:
             self.model.train()  # turn on train mode!
 
             self.optimizer.zero_grad() # YOU HAVE TO KEEP THIS. Do not remove
-            images_train= images_train.to(self.device)
+            if torch.is_tensor(images_train):
+                images_train = images_train.to(self.device)
+                model_type = 1
+            else:
+                model_type = 2
+                (images_train, lastlevel) = images_train
+                images_train = images_train.to(self.device)
+                lastlevel = lastlevel.to(self.device)
+
             targets_train= targets_train.to(self.device)
 
             # Warmup
@@ -179,7 +187,11 @@ class BaseTrainer:
 
             # Forward
             with torch.cuda.amp.autocast(self.pms.amp):
-                pred = self.model(images_train)
+                if model_type==1:
+                    pred = self.model(images_train)
+                elif model_type==2:
+                    pred = self.model(images_train, lastlevel)
+
                 lossfunc = torch.nn.SmoothL1Loss()
 
                 trainloss = lossfunc(pred, targets_train)

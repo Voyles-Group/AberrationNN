@@ -287,8 +287,9 @@ class PatchDataset:
     def __getitem__(self, i):
         img_id = self.ids[i]  # folder names and index number 000-099
         image = self.get_image(img_id)
-        target = self.get_target(img_id)
-        return image, target
+        C1A1Cs = self.get_target(img_id)[:4]
+        target = self.get_target(img_id)[4:]
+        return (image,C1A1Cs), target
 
     def __len__(self):
         return len(self.ids)
@@ -391,7 +392,7 @@ class PatchDataset:
         polar = {'C10': target[0], 'C12': target[1], 'phi12': target[2],
                  'C21': target[3], 'phi21': target[4], 'C23': target[5], 'phi23': target[6]}
         car = polar2cartesian(polar)
-        allab = [car['C21a'], car['C21b'], car['C23a'], car['C23b']]
+        allab = [car['C10'], car['C12a'], car['C12b'], car['C30'], car['C21a'], car['C21b'], car['C23a'], car['C23b']]
         allab = torch.as_tensor(allab, dtype=torch.float32)
         return allab
 
