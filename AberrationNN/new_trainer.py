@@ -14,7 +14,9 @@ from matplotlib import pyplot as plt
 from torch import optim, nn
 import torch.utils.data as data
 from AberrationNN.MagnificationNet import MagnificationNet
-from AberrationNN.dataset import MagnificationDataset, Augmentation
+from AberrationNN.dataset import *
+from AberrationNN.FCAResNet import *
+
 from AberrationNN.train_utils import Parameters, init_seeds, weights_init, EarlyStopping, ModelEMA, get_gpu_info
 
 
@@ -40,9 +42,9 @@ def plot_losses(train_loss, test_loss, savepath) -> None:
 
 
 class BaseTrainer:
-    def __init__(self,dataset_name:str, mdoel_name:str, data_path: str, device: str, hyperdict: Dict, savepath: str):
+    def __init__(self,dataset_name:str, model_name:str, data_path: str, device: str, hyperdict: Dict, savepath: str):
         self.dataset_name = dataset_name
-        self.mdoel_name = mdoel_name
+        self.model_name = model_name
         self.d_train, self.d_test = None, None
         self.lr_history, self.momentum_history = [],[]
         self.trainloss_total, self.testloss_total = [],[]
@@ -58,7 +60,8 @@ class BaseTrainer:
         self.pms = Parameters(**hyperdict)
         self.savepath = savepath
         self.patience = self.pms.patience
-
+        if not os.path.exists(self.savepath):
+            os.mkdir(self.savepath)
         with open(self.savepath + 'hyperdict.json', 'w') as fp:
             json.dump(hyperdict, fp)
 
@@ -66,9 +69,9 @@ class BaseTrainer:
 
         # Initialize model
         init_seeds(1)
-        self.model = eval(self.mdoel_name + "(first_inputchannels=self.pms.first_inputchannels, reduction=self.pms.reduction, "
+        self.model = eval(self.model_name + "(first_inputchannels=self.pms.first_inputchannels, reduction=self.pms.reduction, "
                                             "skip_connection=self.pms.reduction,fca_block_n=self.pms.fca_block_n, if_FT=self.pms.if_FT,"
-                                            "if_CAB=self.pms.if_CAB, patch=self.pms.patch, fft_pad_factor=self.pms.fft_pad_factor,)"
+                                            "if_CAB=self.pms.if_CAB, fftsize=min(self.pms.fftcropsize, self.patch*self.fft_pad_factor),)"
                           )
         self.model.to(self.device)
         self.model.apply(weights_init)

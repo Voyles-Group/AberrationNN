@@ -325,20 +325,20 @@ class FCAResNetSecondOrder(nn.Module):
 
         return final
 
+
 class FCAResNetC1A1Cs(nn.Module):
     def __init__(self,
                  first_inputchannels=4, reduction=16,
-                 skip_connection=False, fca_block_n=2, if_FT=True, if_CAB=True):
+                 skip_connection=False, fca_block_n=2, if_FT=True, if_CAB=True, fftsize=64):
+        # fft_pad_factor and patch is not used and read from calling, leave here for code generality
         super(FCAResNetC1A1Cs, self).__init__()
         self.reduction = reduction
         self.skip_connection = skip_connection
         self.fca_block_n = fca_block_n
         self.if_FT = if_FT
         self.if_CAB = if_CAB
-
-        # patch = round(256 / math.sqrt(first_inputchannels))
+        self.fftsize = fftsize
         # when first_inputchannels includes the reference,the int round make it still work.
-        patch = 128  # assuming that I will not tune the patch size later
 
         self.cab1 = CoordAttentionBlock(input_channels=first_inputchannels, reduction=self.reduction)
         self.cab2 = CoordAttentionBlock(input_channels=first_inputchannels * 2, reduction=self.reduction)
@@ -360,9 +360,12 @@ class FCAResNetC1A1Cs(nn.Module):
         self.cov0 = nn.Conv2d(first_inputchannels, first_inputchannels, kernel_size=3, stride=1, padding='same')
         self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels * 2, kernel_size=3, stride=1, padding='same')
         self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
-        self.dense1 = nn.Linear(first_inputchannels * 4 * int(patch * 2 / 8) ** 2,  # the * 2 is the FFT padding factor 2.
-                                int(math.sqrt(first_inputchannels)) * patch * 2 * 2)
-        self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * patch * 2 * 2, 64) # the second 2 is the FFT padding factor 2.
+        self.dense1 = nn.Linear(first_inputchannels * 4 * int(self.fftsize / 8) ** 2,
+                                # the * 2 is the FFT padding factor 2.
+                                int(math.sqrt(first_inputchannels)) * self.fftsize * 2)
+        self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * self.fftsize * 2,
+                                64)  # the second 2 is the FFT padding factor 2.
+
         self.dense3 = nn.Linear(64, 4)  #####################
         self.flatten = nn.Flatten()
 
@@ -412,10 +415,11 @@ class FCAResNetC1A1Cs(nn.Module):
 
         return final
 
+
 class FCAResNetB2A2(nn.Module):
     def __init__(self,
                  first_inputchannels=64, reduction=16,
-                 skip_connection=False, fca_block_n=2, if_FT=True, if_CAB=True):
+                 skip_connection=False, fca_block_n=2, if_FT=True, if_CAB=True, fftsize = 64):
         super(FCAResNetB2A2, self).__init__()
         self.reduction = reduction
         self.skip_connection = skip_connection
@@ -428,7 +432,7 @@ class FCAResNetB2A2(nn.Module):
         self.cab3 = CoordAttentionBlock(input_channels=first_inputchannels * 4, reduction=self.reduction)
         self.cab4 = CoordAttentionBlock(input_channels=first_inputchannels * 4, reduction=self.reduction)
 
-        patch = 32
+        self.fftsize = fftsize
 
         self.block1 = nn.Sequential(*[FCABlock(input_channels=first_inputchannels, reduction=self.reduction, batch_norm=True,
                                                if_FT=self.if_FT)] * self.fca_block_n)
@@ -441,9 +445,12 @@ class FCAResNetB2A2(nn.Module):
         self.cov0 = nn.Conv2d(first_inputchannels, first_inputchannels, kernel_size=3, stride=1, padding='same')
         self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels * 2, kernel_size=3, stride=1, padding='same')
         self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
-        self.dense1 = nn.Linear(first_inputchannels * 4 * int(patch * 2 / 8) ** 2 + 4, #########
-                                int(math.sqrt(first_inputchannels)) * patch * 2 * 2)
-        self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * patch * 2 * 2, 64)
+        self.dense1 = nn.Linear(first_inputchannels * 4 * int(self.fftsize / 8) ** 2,
+                                # the * 2 is the FFT padding factor 2.
+                                int(math.sqrt(first_inputchannels)) * self.fftsize * 2)
+        self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * self.fftsize * 2,
+                                64)  # the second 2 is the FFT padding factor 2.
+
         self.dense3 = nn.Linear(64, 4)
         self.flatten = nn.Flatten()
 
