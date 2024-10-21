@@ -71,7 +71,7 @@ class BaseTrainer:
         init_seeds(1)
         self.model = eval(self.model_name + "(first_inputchannels=self.pms.first_inputchannels, reduction=self.pms.reduction, "
                                             "skip_connection=self.pms.reduction,fca_block_n=self.pms.fca_block_n, if_FT=self.pms.if_FT,"
-                                            "if_CAB=self.pms.if_CAB, fftsize=min(self.pms.fftcropsize, self.patch*self.fft_pad_factor),)"
+                                            "if_CAB=self.pms.if_CAB, fftsize=min(self.pms.fftcropsize, self.pms.patch*self.pms.fft_pad_factor),)"
                           )
         self.model.to(self.device)
         self.model.apply(weights_init)
@@ -92,7 +92,7 @@ class BaseTrainer:
                                            "normalization=self.pms.normalization, picked_keys=self.pms.data_keys,"
                                            "patch=self.pms.patch, imagesize=self.pms.imagesize, downsampling=self.pms.downsampling,"
                                            "if_HP=self.pms.if_HP, fft_pad_factor = self.pms.fft_pad_factor, fftcropsize = self.pms.fftcropsize,"
-                                           "target_high_order = self.pms.target_high_order)"
+                                           "target_high_order = self.pms.target_high_order, if_reference=self.pms.fftcropsize)"
                        )
         print("The input data shape is ", dataset.data_shape())
         aug_N = int(self.pms.epochs / (dataset.__len__() * 0.4 / self.pms.batchsize))
@@ -103,7 +103,7 @@ class BaseTrainer:
                                     "normalization=self.pms.normalization, picked_keys=self.pms.data_keys,"
                                     "patch=self.pms.patch, imagesize=self.pms.imagesize, downsampling=self.pms.downsampling,"
                                     "if_HP=self.pms.if_HP, fft_pad_factor = self.pms.fft_pad_factor, fftcropsize = self.pms.fftcropsize,"
-                                    "target_high_order = self.pms.target_high_order)"
+                                    "target_high_order = self.pms.target_high_order, if_reference=self.pms.fftcropsize)"
                 )
             datasets.append(dataset_aug)
 

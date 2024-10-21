@@ -129,12 +129,13 @@ class CometDataset:
     """
 
     def __init__(self, data_dir, filestart=0, pre_normalization=False, normalization=True,
-                 imagesize=1024, downsampling=1, fft_pad_factor = 4,
-                 fftcropsize = 128, if_HP=True, target_high_order=False, picked_keys=None,transform=None):
+                 imagesize=1024, downsampling=1, fft_pad_factor=4,
+                 fftcropsize=128, if_HP=True, target_high_order=False, picked_keys=None, transform=None, **kwargs):
         if picked_keys is None:
             picked_keys = [0, 1]
         self.picked_keys = picked_keys
-        self.keys = np.array(list(np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz').keys()))[self.picked_keys]
+        self.keys = np.array(list(np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz').keys()))[
+            self.picked_keys]
         self.data_dir = data_dir
         filenum = len(os.listdir(data_dir))
         nimage = np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz')[self.keys[0]].shape[0]
@@ -177,14 +178,6 @@ class CometDataset:
         right = isize // 2 + self.imagesize // 2
 
         picked = torch.as_tensor(im, dtype=torch.float32)
-
-        if self.if_HP:
-            picked = hp_filter(im)
-            picked = torch.as_tensor(picked, dtype=torch.float32)
-        if self.downsampling is not None and self.downsampling > 1:
-            picked = F.interpolate(picked[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
-        if self.pre_normalization:
-            picked = map01(picked)
         tmp = torch.zeros((isize, isize))
         tmp[top:bottom, left:right] = picked * hanning
         tmpft = torch.fft.fft2(tmp)
@@ -192,7 +185,7 @@ class CometDataset:
         fft = np.abs(tmpft[topc:bottomc, leftc:rightc])
 
         if self.normalization:
-            fft = (fft - fft.min()) / (fft.max()-fft.min())
+            fft = (fft - fft.min()) / (fft.max() - fft.min())
         return fft
 
     def get_image(self, img_id):
@@ -201,29 +194,46 @@ class CometDataset:
         for k in self.keys:
             image = np.load(path)[k][int(img_id[-3:])]
             if self.transform:
+                image = torch.as_tensor(image, dtype=torch.float32)
                 image = self.transform(image)
+            if self.if_HP:
+                image = hp_filter(image)
+                image = torch.as_tensor(image, dtype=torch.float32)
+            if self.downsampling is not None and self.downsampling > 1:
+                image = F.interpolate(image[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+            if self.pre_normalization:
+                image = map01(image)
+
             image_aberration = self.wholeFFT(image)
             if image_aberration.shape[-1] > self.fftcropsize:
-                image_aberration = image_aberration[image_aberration.shape[0] // 2 - self.fftcropsize//2: image_aberration.shape[0] // 2 + self.fftcropsize//2,
-                image_aberration.shape[1] // 2 - self.fftcropsize//2: image_aberration.shape[1] // 2 + self.fftcropsize//2]
+                image_aberration = image_aberration[
+                                   image_aberration.shape[0] // 2 - self.fftcropsize // 2: image_aberration.shape[
+                                                                                               0] // 2 + self.fftcropsize // 2,
+                                   image_aberration.shape[1] // 2 - self.fftcropsize // 2: image_aberration.shape[
+                                                                                               1] // 2 + self.fftcropsize // 2]
 
             data.append(image_aberration)
 
         path_rf = self.data_dir + img_id[:-3] + '/standard_reference.npz'
         for k in self.keys:
             rf = np.load(path_rf)[k]
-            rf = rf if rf.ndim==2 else rf[0]
+            rf = rf if rf.ndim == 2 else rf[0]
             image_reference = self.wholeFFT(rf)
             if image_reference.shape[-1] > self.fftcropsize:
-                image_reference = image_reference[image_reference.shape[0] // 2 - self.fftcropsize//2: image_reference.shape[0] // 2 + self.fftcropsize//2,
-                image_reference.shape[1] // 2 - self.fftcropsize//2: image_reference.shape[1] // 2 + self.fftcropsize//2]
+                image_reference = image_reference[
+                                  image_reference.shape[0] // 2 - self.fftcropsize // 2: image_reference.shape[
+                                                                                             0] // 2 + self.fftcropsize // 2,
+                                  image_reference.shape[1] // 2 - self.fftcropsize // 2: image_reference.shape[
+                                                                                             1] // 2 + self.fftcropsize // 2]
                 data.append(image_reference)
 
         return torch.stack(data)
 
     def get_meta(self, img_id):
         meta = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')  ###########
-        meta = meta.get(['thicknessA', 'tiltx', 'tilty', 'C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[int(img_id[-3:])]
+        meta = meta.get(
+            ['thicknessA', 'tiltx', 'tilty', 'C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[
+            int(img_id[-3:])]
         return meta
 
     def get_target(self, img_id):
@@ -244,6 +254,146 @@ class CometDataset:
 
     def data_shape(self):
         return self.get_image(self.ids[0])[0].shape
+
+
+class PatchDataset:
+
+    def __init__(self, data_dir, filestart=0, pre_normalization=False, normalization=True,
+                 transform=None, patch=64, imagesize=1024, downsampling=2, fft_pad_factor = 2,
+                 fftcropsize = 64, if_HP=True, if_reference=True, picked_keys=None,):
+
+        if picked_keys is None:
+            picked_keys = [0, 1]
+        self.picked_keys = picked_keys
+        self.keys = np.array(list(np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz').keys()))[self.picked_keys]
+        self.data_dir = data_dir
+        filenum = len(os.listdir(data_dir))
+        nimage = np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz')[self.keys[0]].shape[0]
+        # folder name + index number 000-099
+        self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
+                    [*range(nimage)]]
+
+        self.normalization = normalization
+        self.pre_normalization = pre_normalization
+        self.transform = transform
+        self.patch = patch
+        self.imagesize = imagesize
+        self.downsampling = downsampling
+        self.if_reference = if_reference
+        self.if_HP = if_HP
+        self.fft_pad_factor = fft_pad_factor
+        self.fftcropsize = fftcropsize
+
+    def __getitem__(self, i):
+        img_id = self.ids[i]  # folder names and index number 000-099
+        image = self.get_image(img_id)
+        target = self.get_target(img_id)
+        return image, target
+
+    def __len__(self):
+        return len(self.ids)
+
+    def singleFFT(self, im_list):
+        """
+        Normalization included
+        """
+        ffts = []
+        isize = self.patch * self.fft_pad_factor
+        csize = isize
+        topc = isize // 2 - csize // 2
+        leftc = isize // 2 - csize // 2
+        bottomc = isize // 2 + csize // 2
+        rightc = isize // 2 + csize // 2
+
+        hanning = np.outer(np.hanning(self.patch),
+                           np.hanning(self.patch))  # A 2D hanning window with the same size as image
+        top = isize // 2 - self.patch // 2
+        left = isize // 2 - self.patch // 2
+        bottom = isize // 2 + self.patch // 2
+        right = isize // 2 + self.patch // 2
+        for im in im_list:
+            tmp = torch.zeros((isize, isize))
+            tmp[top:bottom, left:right] = im * hanning
+            tmpft = torch.fft.fft2(tmp)
+            tmpft = torch.fft.fftshift(tmpft)
+            fft = np.abs(tmpft[topc:bottomc, leftc:rightc])
+
+            if self.normalization:
+                fft = (fft - fft.min()) / (fft.max()-fft.min())
+            ffts.append(fft)
+        return torch.cat([it[None, ...] for it in ffts]) #######
+
+
+    def get_image(self, img_id):
+        path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
+        data,  data_rf = [], []
+        for k in self.keys:
+            image = np.load(path)[k][int(img_id[-3:])]
+            if self.if_HP:
+                image = hp_filter(image)
+                image = torch.as_tensor(image, dtype=torch.float32)
+            if self.downsampling is not None and self.downsampling > 1:
+                image = F.interpolate(image[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+            if self.transform:
+                image = torch.as_tensor(image, dtype=torch.float32)
+                image = self.transform(image)
+
+            if self.pre_normalization:
+                image = map01(image)
+            if self.transform:
+                image = torch.as_tensor(image, dtype=torch.float32)
+                image = self.transform(image)
+
+            windows = image.unfold(0, self.patch, self.patch)
+            windows = windows.unfold(1, self.patch, self.patch)
+            n = int(image.shape[0] / self.patch)
+            windows = windows.reshape(n ** 2, windows.shape[-2],  windows.shape[-1])
+            image_aberration = self.singleFFT(windows)
+            if image_aberration.shape[-1] > self.fftcropsize:
+                image_aberration = image_aberration[:, image_aberration.shape[-2] // 2 - self.fftcropsize//2: image_aberration.shape[-2] // 2 + self.fftcropsize//2,
+                image_aberration.shape[-1] // 2 - self.fftcropsize//2: image_aberration.shape[-1] // 2 + self.fftcropsize//2]
+
+            data.append(image_aberration)
+        out = torch.vstack(data)
+
+        if self.if_reference:
+            path_rf = self.data_dir + img_id[:-3] + '/standard_reference.npz'
+            for k in self.keys:
+                image = np.load(path_rf)[k]
+                if self.if_HP:
+                    image = hp_filter(image)
+                    image = torch.as_tensor(image, dtype=torch.float32)
+                if self.downsampling is not None and self.downsampling > 1:
+                    image = F.interpolate(image[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
+                if self.pre_normalization:
+                    image = map01(image)
+
+                windows = image.unfold(0, self.patch, self.patch)
+                windows = windows.unfold(1, self.patch, self.patch)
+                n = int(image.shape[0] / self.patch)
+                windows = windows.reshape(n ** 2, windows.shape[-2],  windows.shape[-1])
+                image_reference = self.singleFFT(windows)
+                if image_reference.shape[-1] > self.fftcropsize:
+                    image_reference = image_reference[:, image_reference.shape[-2] // 2 - self.fftcropsize//2: image_reference.shape[-2] // 2 + self.fftcropsize//2,
+                    image_reference.shape[-1] // 2 - self.fftcropsize//2: image_reference.shape[-1] // 2 + self.fftcropsize//2]
+                data_rf.append(image_reference)
+
+            out = out - torch.vstack(data_rf)
+
+        return out
+
+    def get_target(self, img_id):
+        # return shape need to be [x]
+        target = pd.read_csv(self.data_dir + img_id[:-3] + '/meta.csv')  ###########
+        target = target.get(['C10', 'C12', 'phi12', 'C21', 'phi21', 'C23', 'phi23', 'Cs']).to_numpy()[
+            int(img_id[-3:])]  ##########
+        target = torch.as_tensor(target, dtype=torch.float32)  ##### important to keep same dtype
+        polar = {'C10': target[0], 'C12': target[1], 'phi12': target[2],
+                 'C21': target[3], 'phi21': target[4], 'C23': target[5], 'phi23': target[6]}
+        car = polar2cartesian(polar)
+        allab = [car['C21a'], car['C21b'], car['C23a'], car['C23b']]
+        allab = torch.as_tensor(allab, dtype=torch.float32)
+        return allab
 
 
 class MagnificationDataset:
@@ -330,6 +480,7 @@ class MagnificationDataset:
             if self.downsampling is not None and self.downsampling > 1:
                 picked = F.interpolate(picked[None, None, ...], scale_factor=1 / self.downsampling, mode='bilinear')[0, 0]
             if self.transform:
+                picked = torch.as_tensor(picked, dtype=torch.float32)
                 picked = self.transform(picked)
 
             if self.pre_normalization:
@@ -380,6 +531,7 @@ class MagnificationDataset:
         for k in self.keys:
             image = np.load(path)[k][int(img_id[-3:])][self.cropsize:-self.cropsize, self.cropsize:-self.cropsize]
             if self.transform:
+                image= torch.as_tensor(image, dtype=torch.float32)
                 image = self.transform(image)
             # crop the outer border
             # pick a patch
@@ -395,6 +547,7 @@ class MagnificationDataset:
             for i in range(len(self.keys)):
                 croped = np.load(path_rf)[i][self.cropsize:-self.cropsize, self.cropsize:-self.cropsize]
                 if self.transform:
+                    croped = torch.as_tensor(croped, dtype=torch.float32)
                     croped = self.transform(croped)
                 data_rf.append(croped[
                         xi * self.patch * self.downsampling: (xi + 1) * self.patch * self.downsampling,
@@ -482,8 +635,7 @@ class MagnificationDataset:
 class RonchiTiltPairAll:
 
     def __init__(self, data_dir, filestart=0, filenum=120, nimage=100, pre_normalization=False, normalization=True,
-                 transform=None,
-                 patch=32, imagesize=512, downsampling=2, if_HP=True, if_reference=False):
+                 transform=None,patch=32, imagesize=512, downsampling=2, if_HP=True, if_reference=False):
         filenum = len(os.listdir(data_dir))
         nimage = np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz')['tiltx'].shape[0]
 
@@ -604,7 +756,7 @@ class Ronchi2fftDatasetAll:
         a = dataset.get_target('149631001')
     """
 
-    def __init__(self, data_dir, filestart=0, filenum=120, nimage=100, pre_normalization=False, normalization=True,
+    def __init__(self, data_dir, filestart=0, pre_normalization=False, normalization=True,
                  transform=None, patch=32, imagesize=512, downsampling=2, if_HP=True, if_reference=False):
         self.data_dir = data_dir
         filenum = len(os.listdir(data_dir))
@@ -661,7 +813,7 @@ class Ronchi2fftDatasetAll:
         if self.normalization:
             image = torch.where(image >= 0, image / image.max(), -image / image.min())
 
-            return image
+        return image
 
     def get_target(self, img_id):
         # return shape need to be [x]

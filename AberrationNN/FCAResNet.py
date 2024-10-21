@@ -418,7 +418,7 @@ class FCAResNetC1A1Cs(nn.Module):
 
 class FCAResNetB2A2(nn.Module):
     def __init__(self,
-                 first_inputchannels=64, reduction=16,
+                 first_inputchannels=128, reduction=16,
                  skip_connection=False, fca_block_n=2, if_FT=True, if_CAB=True, fftsize = 64):
         super(FCAResNetB2A2, self).__init__()
         self.reduction = reduction
