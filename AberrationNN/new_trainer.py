@@ -40,7 +40,9 @@ def plot_losses(train_loss, test_loss, savepath) -> None:
 
 
 class BaseTrainer:
-    def __init__(self,data_path: str, device: str, hyperdict: Dict, savepath: str):
+    def __init__(self,dataset_name:str, mdoel_name:str, data_path: str, device: str, hyperdict: Dict, savepath: str):
+        self.dataset_name = dataset_name
+        self.mdoel_name = mdoel_name
         self.d_train, self.d_test = None, None
         self.lr_history, self.momentum_history = [],[]
         self.trainloss_total, self.testloss_total = [],[]
@@ -64,9 +66,10 @@ class BaseTrainer:
 
         # Initialize model
         init_seeds(1)
-        self.model = MagnificationNet(first_inputchannels=self.pms.first_inputchannels, reduction=self.pms.reduction,
-                                      skip_connection=self.pms.reduction,fca_block_n=self.pms.fca_block_n, if_FT=self.pms.if_FT,
-                                      if_CAB=self.pms.if_CAB, patch=self.pms.patch, fft_pad_factor=self.pms.fft_pad_factor,)
+        self.model = eval(self.mdoel_name + "(first_inputchannels=self.pms.first_inputchannels, reduction=self.pms.reduction, "
+                                            "skip_connection=self.pms.reduction,fca_block_n=self.pms.fca_block_n, if_FT=self.pms.if_FT,"
+                                            "if_CAB=self.pms.if_CAB, patch=self.pms.patch, fft_pad_factor=self.pms.fft_pad_factor,)"
+                          )
         self.model.to(self.device)
         self.model.apply(weights_init)
 
@@ -82,21 +85,24 @@ class BaseTrainer:
 
 
         # Initialize dataset
-        dataset = MagnificationDataset(self.data_path, filestart=0, transform=None, pre_normalization=self.pms.pre_normalization,
-                                       normalization=self.pms.normalization, picked_keys=self.pms.data_keys,
-                                       patch=self.pms.patch, imagesize=self.pms.imagesize, downsampling=self.pms.downsampling,
-                                       if_HP=self.pms.if_HP, fft_pad_factor = self.pms.fft_pad_factor, fftcropsize = self.pms.fftcropsize)
+        dataset = eval(self.dataset_name + "(self.data_path, filestart=0, transform=None, pre_normalization=self.pms.pre_normalization,"
+                                           "normalization=self.pms.normalization, picked_keys=self.pms.data_keys,"
+                                           "patch=self.pms.patch, imagesize=self.pms.imagesize, downsampling=self.pms.downsampling,"
+                                           "if_HP=self.pms.if_HP, fft_pad_factor = self.pms.fft_pad_factor, fftcropsize = self.pms.fftcropsize,"
+                                           "target_high_order = self.pms.target_high_order)"
+                       )
         print("The input data shape is ", dataset.data_shape())
         aug_N = int(self.pms.epochs / (dataset.__len__() * 0.4 / self.pms.batchsize))
         datasets = []
         for i in range(aug_N):
-            datasets.append(MagnificationDataset(self.data_path, filestart=0, pre_normalization=self.pms.pre_normalization,
-                                                 normalization=self.pms.normalization, picked_keys=self.pms.data_keys,
-                                                 patch=self.pms.patch, imagesize=self.pms.imagesize,
-                                                 downsampling=self.pms.downsampling,
-                                                 transform=Augmentation(2), if_HP=self.pms.if_HP,
-                                                 fft_pad_factor=self.pms.fft_pad_factor,fftcropsize=self.pms.fftcropsize
-                                                 ))
+            dataset_aug = eval(
+                self.dataset_name + "(self.data_path, filestart=0, transform=Augmentation(2), pre_normalization=self.pms.pre_normalization,"
+                                    "normalization=self.pms.normalization, picked_keys=self.pms.data_keys,"
+                                    "patch=self.pms.patch, imagesize=self.pms.imagesize, downsampling=self.pms.downsampling,"
+                                    "if_HP=self.pms.if_HP, fft_pad_factor = self.pms.fft_pad_factor, fftcropsize = self.pms.fftcropsize,"
+                                    "target_high_order = self.pms.target_high_order)"
+                )
+            datasets.append(dataset_aug)
 
         repeat_dataset = data.ConcatDataset([dataset] + datasets)
 
@@ -142,7 +148,7 @@ class BaseTrainer:
         record = time.time()
 
         # note: I will still keep the iteration loop and no real epoch loop
-        for i, ((images_train, targets_train, _), (images_test, targets_test, _)) in enumerate(
+        for i, ((images_train, targets_train), (images_test, targets_test)) in enumerate(
                 zip(data_loader_train, data_loader_test)):
 
             with warnings.catch_warnings():

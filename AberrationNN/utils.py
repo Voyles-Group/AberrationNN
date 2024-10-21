@@ -185,7 +185,7 @@ def polar2cartesian(polar):
     cartesian["C23a"] = polar["C23"] * np.cos(3 * polar["phi23"])
     cartesian["C23b"] = polar["C23"] * np.sin(3 * polar["phi23"])
 
-    cartesian["C30"] = polar["C30"]
+    cartesian["C30"] = polar["Cs"]
     cartesian["C32a"] = polar["C32"] * np.cos(2 * polar["phi32"])
     cartesian["C32b"] = polar["C32"] * np.sin(2 * polar["phi32"])
     cartesian["C34a"] = polar["C34"] * np.cos(4 * polar["phi34"])
