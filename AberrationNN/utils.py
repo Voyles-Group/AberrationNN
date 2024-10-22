@@ -229,6 +229,6 @@ def cartesian2polar(cartesian):
     polar["phi23"] = np.arctan2(cartesian["C23b"], cartesian["C23a"]) / 3.0
     # polar["phi23"] = polar["phi23"]/np.pi * 180
 
-    # polar["C30"] = cartesian["C30"]
+    polar["Cs"] = cartesian["C30"]
 
     return polar

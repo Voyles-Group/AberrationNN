@@ -94,7 +94,7 @@ class BaseTrainer:
                                            "if_HP=self.pms.if_HP, fft_pad_factor = self.pms.fft_pad_factor, fftcropsize = self.pms.fftcropsize,"
                                            "target_high_order = self.pms.target_high_order, if_reference=self.pms.fftcropsize)"
                        )
-        print("The input data shape is ", dataset.data_shape())
+        # print("The input data shape is ", dataset.data_shape())
         aug_N = int(self.pms.epochs / (dataset.__len__() * 0.4 / self.pms.batchsize))
         datasets = []
         for i in range(aug_N):
@@ -220,11 +220,23 @@ class BaseTrainer:
                             break
             ##########################################################################
             ###Test###
-            images_test = images_test.to(self.device)
+            if torch.is_tensor(images_test ):
+                images_test = images_test .to(self.device)
+                model_type = 1
+            else:
+                model_type = 2
+                (images_test , lastlevel) = images_test
+                images_test= images_test.to(self.device)
+                lastlevel = lastlevel.to(self.device)
+
             targets = targets_test.to(self.device)
             self.model.eval()
             with torch.no_grad():
-                pred = self.model(images_test)
+                if model_type==1:
+                    pred = self.model(images_test)
+                elif model_type==2:
+                    pred = self.model(images_test, lastlevel)
+
                 testloss = lossfunc(pred, targets)
 
             self.testloss_total.append(testloss.item())

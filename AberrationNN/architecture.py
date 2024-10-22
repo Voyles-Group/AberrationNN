@@ -1,4 +1,4 @@
-from AberrationNN.FCAResNet import FCAResNet, FCAResNetSecondOrder
+from AberrationNN.FCAResNet import *
 from torch import nn
 import torch
 
@@ -28,3 +28,5 @@ class CombinedNN(nn.Module):
         second = self.secondordermodel(x, first)
 
         return torch.cat([first, second], dim=1)
+
+
