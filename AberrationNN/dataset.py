@@ -402,7 +402,7 @@ class TwoLevelDataset:
     def __init__(self, data_dir, hyperdict_1, hyperdict_2, filestart=0, transform=None, **kwargs):
 
 
-        self.picked_keys = hyperdict_1['picked_keys']
+        self.picked_keys = hyperdict_1['data_keys']
         self.keys = np.array(list(np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz').keys()))[self.picked_keys]
         self.data_dir = data_dir
         filenum = len(os.listdir(data_dir))
@@ -436,7 +436,7 @@ class TwoLevelDataset:
         image1 = self.get_image1(img_id)
         image2 = self.get_image2(img_id)
         target = self.get_target(img_id)
-        return (image1,image2), target
+        return (image1, image2), target
 
     def __len__(self):
         return len(self.ids)

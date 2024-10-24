@@ -504,28 +504,28 @@ class FCAResNetB2A2(nn.Module):
 
 
 class TwoLevelTemplated(nn.Module):
-    def __init__(self,
-                 first_inputchannels=64, reduction=16,
-                 skip_connection=False, fca_block_n=2, if_FT=True, if_CAB=True, fftsize=64):
+    def __init__(self, hyperdict1, hyperdict2):
         super(TwoLevelTemplated, self).__init__()
-        self.first_inputchannels = first_inputchannels
-        self.reduction = reduction
-        self.skip_connection = skip_connection
-        self.fca_block_n = fca_block_n
-        self.if_FT = if_FT
-        self.if_CAB = if_CAB
-        self.fftsize = fftsize
 
-        self.firstmodel = FCAResNetC1A1Cs(first_inputchannels=self.first_inputchannels, reduction=self.reduction,
-                                          skip_connection=self.skip_connection, fca_block_n=self.fca_block_n,
-                                          if_FT=self.if_FT, if_CAB=self.if_CAB, fftsize=self.fftsize)
 
-        self.secondmodel = FCAResNetB2A2(first_inputchannels=self.first_inputchannels, reduction=self.reduction,
-                                         skip_connection=self.skip_connection, fca_block_n=self.fca_block_n,
-                                         if_FT=self.if_FT, if_CAB=self.if_CAB)
+        self.firstmodel = FCAResNetC1A1Cs(first_inputchannels= hyperdict1['first_inputchannels'],
+                                          reduction=hyperdict1['reduction'],
+                                          skip_connection=hyperdict1['skip_connection'],
+                                          fca_block_n=hyperdict1['fca_block_n'],
+                                          if_FT=hyperdict1['if_FT'],
+                                          if_CAB=hyperdict1['if_CAB'],
+                                          fftsize=hyperdict1['fftcropsize'])
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        self.secondmodel = FCAResNetB2A2(first_inputchannels= hyperdict2['first_inputchannels'],
+                                         reduction=hyperdict2['reduction'],
+                                         skip_connection=hyperdict2['skip_connection'],
+                                         fca_block_n=hyperdict2['fca_block_n'],
+                                         if_FT=hyperdict2['if_FT'],
+                                         if_CAB=hyperdict2['if_CAB'],
+                                         fftsize=hyperdict2['fftcropsize'])
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         first = self.firstmodel(x)
-        second = self.secondmodel(x, first)
+        second = self.secondmodel(y, first)
 
         return torch.cat([first, second], dim=1)
