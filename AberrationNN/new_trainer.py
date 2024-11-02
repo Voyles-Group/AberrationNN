@@ -372,13 +372,13 @@ class TwoLevelTrainer(BaseTrainer):
         self.loss_beta = loss_beta
 
         # Initialize dataset
-        dataset = eval(self.dataset_name + "(self.data_path, hyperdict_1, hyperdict_2,)")
+        dataset = eval(self.dataset_name + "(self.data_path, hyperdict1, hyperdict2,)")
         # print("The input data shape is ", dataset.data_shape())
         aug_N = int(self.pms.epochs / (dataset.__len__() * 0.4 / self.pms.batchsize))
         datasets = []
         for i in range(aug_N):
             dataset_aug = eval(self.dataset_name +
-                               "(self.data_path, hyperdict_1, hyperdict_2, transform=Augmentation(2),)")
+                               "(self.data_path, hyperdict1, hyperdict2, transform=Augmentation(2),)")
             datasets.append(dataset_aug)
 
         repeat_dataset = data.ConcatDataset([dataset] + datasets)

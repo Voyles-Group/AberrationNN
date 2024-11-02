@@ -603,7 +603,7 @@ class TwoLevelDataset:
             int(img_id[-3:])]  ##########
         target = torch.as_tensor(target, dtype=torch.float32)  ##### important to keep same dtype
         polar = {'C10': target[0], 'C12': target[1], 'phi12': target[2],
-                 'C21': target[3], 'phi21': target[4], 'C23': target[5], 'phi23': target[6]}
+                 'C21': target[3], 'phi21': target[4], 'C23': target[5], 'phi23': target[6], 'Cs': target[7]}
         car = polar2cartesian(polar)
         allab = [car['C10'], car['C12a'], car['C12b'], car['C30']*1e-3, car['C21a'], car['C21b'], car['C23a'], car['C23b']]
         allab = torch.as_tensor(allab, dtype=torch.float32)

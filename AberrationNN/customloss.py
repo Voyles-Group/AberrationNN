@@ -20,12 +20,14 @@ class CombinedLoss(nn.Module):
     def forward(self, predicted_coeff, target_coeff, kxx, kyy, wavelengthA = 0.025, order = 3):
 
         # data loss from the coefficients residuals
-        data_loss = (self.alpha * F.smooth_l1_loss(predicted_coeff[:4], target_coeff[:4]) +
-                     (1-self.alpha) * F.smooth_l1_loss(predicted_coeff[4:], target_coeff[4:]))
+        data_loss_1 = F.smooth_l1_loss(predicted_coeff[:4], target_coeff[:4])
+        data_loss_2 = F.smooth_l1_loss(predicted_coeff[4:], target_coeff[4:])
+
+        data_loss = (self.alpha * data_loss_1 + (1-self.alpha) * data_loss_2)
 
         phasemap_gpts = kxx.shape[0]
-        predicted_coeff[3] = predicted_coeff[3] * 1e3 # recover the scaling of Cs
-        target_coeff[3] = target_coeff[3] * 1e3 # recover the scaling of Cs
+        # predicted_coeff[3] = predicted_coeff[3] * 1e3 # recover the scaling of Cs
+        # target_coeff[3] = target_coeff[3] * 1e3 # cannot do this as inplace change fails gradient computation
 
         predicted_coeff = (predicted_coeff * 2 * np.pi / wavelengthA)[..., None, None].expand(-1, -1, phasemap_gpts, phasemap_gpts)
         target_coeff = (target_coeff * 2 * np.pi / wavelengthA)[..., None, None].expand(-1, -1, phasemap_gpts, phasemap_gpts)
@@ -42,13 +44,13 @@ class CombinedLoss(nn.Module):
                                   (kyy ** 2 * kyy + kyy * kxx ** 2)
                                   + target_coeff[:, 6] * (kxx ** 2 * kxx - 3 * kxx * kyy ** 2) + target_coeff[:, 7] * (- kyy ** 2 * kyy + 3 * kyy * kxx ** 2))
         if order >= 3:
-            chi_loss = chi_loss + 1 / 4 * (predicted_coeff[:, 3] * (kxx ** 4 + 2 * kyy ** 2 * kxx ** 2 + kyy ** 4)) - \
-                       1 / 4 * (target_coeff[:, 3] * (kxx ** 4 + 2 * kyy ** 2 * kxx ** 2 + kyy ** 4))
+            chi_loss = chi_loss + 1 / 4 * (1e3 * predicted_coeff[:, 3] * (kxx ** 4 + 2 * kyy ** 2 * kxx ** 2 + kyy ** 4)) - \
+                       1 / 4 * (1e3 * target_coeff[:, 3] * (kxx ** 4 + 2 * kyy ** 2 * kxx ** 2 + kyy ** 4))
         # chi_loss[batch, kxx, kyy]
 
         chi_loss_l2 = (chi_loss**2).mean(axis=(1, 2))  # averaged the L2 at every k pixel
         chi_loss_l2 = chi_loss_l2.mean()  # averaged the batch
-
+        # print( 'Losses: ',  data_loss_1,data_loss_2, chi_loss_l2.mean())
         return data_loss + chi_loss_l2
 
 

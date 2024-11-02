@@ -366,7 +366,7 @@ class FCAResNetC1A1Cs(nn.Module):
         self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * self.fftsize * 2,
                                 64)  # the second 2 is the FFT padding factor 2.
 
-        self.dense3 = nn.Linear(64, 4)  #####################
+        self.dense3 = nn.Linear(64, 4)  ##################### temp
         self.flatten = nn.Flatten()
 
         self.cov3 = nn.Conv2d(first_inputchannels * 4, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
@@ -445,7 +445,7 @@ class FCAResNetB2A2(nn.Module):
         self.cov0 = nn.Conv2d(first_inputchannels, first_inputchannels, kernel_size=3, stride=1, padding='same')
         self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels * 2, kernel_size=3, stride=1, padding='same')
         self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
-        self.dense1 = nn.Linear(first_inputchannels * 4 * int(self.fftsize / 8) ** 2 + 4,
+        self.dense1 = nn.Linear(first_inputchannels * 4 * int(self.fftsize / 8) ** 2 + 4, ###################
                                 # the * 2 is the FFT padding factor 2.
                                 int(math.sqrt(first_inputchannels)) * self.fftsize * 2)
         self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * self.fftsize * 2,
@@ -503,6 +503,92 @@ class FCAResNetB2A2(nn.Module):
         return final
 
 
+class FCAResNetB2A2(nn.Module):
+    def __init__(self,
+                 first_inputchannels=128, reduction=16,
+                 skip_connection=False, fca_block_n=2, if_FT=True, if_CAB=True, fftsize = 64):
+        super(FCAResNetB2A2, self).__init__()
+        self.reduction = reduction
+        self.skip_connection = skip_connection
+        self.fca_block_n = fca_block_n
+        self.if_FT = if_FT
+        self.if_CAB = if_CAB
+
+        self.cab1 = CoordAttentionBlock(input_channels=first_inputchannels, reduction=self.reduction)
+        self.cab2 = CoordAttentionBlock(input_channels=first_inputchannels * 2, reduction=self.reduction)
+        self.cab3 = CoordAttentionBlock(input_channels=first_inputchannels * 4, reduction=self.reduction)
+        self.cab4 = CoordAttentionBlock(input_channels=first_inputchannels * 4, reduction=self.reduction)
+
+        self.fftsize = fftsize
+
+        self.block1 = nn.Sequential(*[FCABlock(input_channels=first_inputchannels, reduction=self.reduction, batch_norm=True,
+                                               if_FT=self.if_FT)] * self.fca_block_n)
+        self.block2 = nn.Sequential(*[FCABlock(input_channels=first_inputchannels * 2, reduction=self.reduction, batch_norm=True,
+                                               if_FT=self.if_FT)] * self.fca_block_n)
+        self.block3 = nn.Sequential(*[FCABlock(input_channels=first_inputchannels * 4, reduction=self.reduction, batch_norm=True,
+                                               if_FT=self.if_FT)] * self.fca_block_n)
+        self.block4 = nn.Sequential(*[FCABlock(input_channels=first_inputchannels * 4, reduction=self.reduction, batch_norm=True,
+                                               if_FT=self.if_FT)] * self.fca_block_n)
+        self.cov0 = nn.Conv2d(first_inputchannels, first_inputchannels, kernel_size=3, stride=1, padding='same')
+        self.cov1 = nn.Conv2d(first_inputchannels, first_inputchannels * 2, kernel_size=3, stride=1, padding='same')
+        self.cov2 = nn.Conv2d(first_inputchannels * 2, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
+        self.dense1 = nn.Linear(first_inputchannels * 4 * int(self.fftsize / 8) ** 2 + 4, ###################
+                                # the * 2 is the FFT padding factor 2.
+                                int(math.sqrt(first_inputchannels)) * self.fftsize * 2)
+        self.dense2 = nn.Linear(int(math.sqrt(first_inputchannels)) * self.fftsize * 2,
+                                64)  # the second 2 is the FFT padding factor 2.
+
+        self.dense3 = nn.Linear(64, 4)
+        self.flatten = nn.Flatten()
+
+        self.cov3 = nn.Conv2d(first_inputchannels * 4, first_inputchannels * 4, kernel_size=3, stride=1, padding='same')
+
+    def forward(self, x: torch.Tensor, first: torch.Tensor) -> torch.Tensor:
+        c1 = gelu(self.cov0(x))
+        keep = gelu(self.cov0(x))
+        if self.if_CAB:
+            c1 = self.cab1(c1)
+        c1 = self.block1(c1)
+
+        if self.skip_connection:
+            c1 += keep
+        c2 = F.max_pool2d(c1, kernel_size=2, stride=2)
+
+        d2 = gelu(self.cov1(c2))
+        keep = gelu(self.cov1(c2))
+        if self.if_CAB:
+            d2 = self.cab2(d2)
+        d2 = self.block2(d2)
+        if self.skip_connection:
+            d2 += keep
+        c3 = F.max_pool2d(d2, kernel_size=2, stride=2)
+
+        e3 = gelu(self.cov2(c3))
+        keep = gelu(self.cov2(c3))
+        if self.if_CAB:
+            e3 = self.cab3(e3)
+        e3 = self.block3(e3)
+        if self.skip_connection:
+            e3 += keep
+        c4 = F.max_pool2d(e3, kernel_size=2, stride=2)  # alternate avg_pool
+
+        f4 = gelu(self.cov3(c4))
+        keep = gelu(self.cov3(c4))
+        if self.if_CAB:
+            f4 = self.cab4(f4)
+        f4 = self.block4(f4)
+        if self.skip_connection:
+            f4 += keep
+
+        flat = self.flatten(f4)
+        final = torch.cat([flat, first], dim=1)
+        final = gelu(self.dense1(final))
+        final = gelu(self.dense2(final))
+        # final = torch.cat([final, cov], dim=1)
+        final = self.dense3(final)
+
+        return final
+
 class TwoLevelTemplated(nn.Module):
     def __init__(self, hyperdict1, hyperdict2):
         super(TwoLevelTemplated, self).__init__()
@@ -529,3 +615,33 @@ class TwoLevelTemplated(nn.Module):
         second = self.secondmodel(y, first)
 
         return torch.cat([first, second], dim=1)
+        # return torch.cat([second[0], first, second[1:]], dim=1)
+
+class NewTwoLevelTemplated(nn.Module):
+    # use the same model for two level
+    def __init__(self, hyperdict1, hyperdict2):
+        super(NewTwoLevelTemplated, self).__init__()
+
+
+        self.firstmodel = FCAResNetB2A2(first_inputchannels= hyperdict2['first_inputchannels'],
+                                         reduction=hyperdict2['reduction'],
+                                         skip_connection=hyperdict2['skip_connection'],
+                                         fca_block_n=hyperdict2['fca_block_n'],
+                                         if_FT=hyperdict2['if_FT'],
+                                         if_CAB=hyperdict2['if_CAB'],
+                                         fftsize=hyperdict2['fftcropsize'])
+
+        self.secondmodel = FCAResNetB2A2(first_inputchannels= hyperdict2['first_inputchannels'],
+                                         reduction=hyperdict2['reduction'],
+                                         skip_connection=hyperdict2['skip_connection'],
+                                         fca_block_n=hyperdict2['fca_block_n'],
+                                         if_FT=hyperdict2['if_FT'],
+                                         if_CAB=hyperdict2['if_CAB'],
+                                         fftsize=hyperdict2['fftcropsize'])
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        first = self.firstmodel(x)
+        second = self.secondmodel(y, first)
+
+        return torch.cat([first, second], dim=1)
+        # return torch.cat([second[0], first, second[1:]], dim=1)
