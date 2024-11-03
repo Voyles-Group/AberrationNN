@@ -350,8 +350,209 @@ class BaseTrainer:
             self.ema.update(self.model)
 
 
-class TwoLevelTrainer_3step(BaseTrainer):
+class TwoLevelTrainer(BaseTrainer):
 
+    def train(self, hyperdict1, hyperdict2, loss_alpha, loss_beta):
+
+        # Initialize model
+        init_seeds(1)
+        self.model = eval(self.model_name + "(hyperdict1, hyperdict2)" )
+        self.model.apply(weights_init)
+
+        self.model.to(self.device)
+
+        self.stopper = EarlyStopping(patience=self.patience)  #########################################
+        self.scaler = torch.cuda.amp.GradScaler(enabled=self.pms.amp)  # automatic mixed precision training for speeding up and save memory
+        self.ema = ModelEMA(self.model)
+        self.accumulate = max(round(self.pms.nbs / self.pms.batchsize),1) # accumulate loss before optimizing, nbs nominal batch size
+        weight_decay = self.pms.weight_decay * self.pms.batchsize * self.accumulate / self.pms.nbs  # scale weight_decay
+
+        self.optimizer = self.build_optimizer(model=self.model, lr=self.pms.lr0, momentum=self.pms.momentum,decay=weight_decay)
+        self.setup_scheduler()
+        self.scheduler.last_epoch = - 1  # do not move
+        self.loss_alpha = loss_alpha
+        self.loss_beta = loss_beta
+
+        # Initialize dataset
+        dataset = eval(self.dataset_name + "(self.data_path, hyperdict1, hyperdict2,)")
+        # print("The input data shape is ", dataset.data_shape())
+        aug_N = int(self.pms.epochs / (dataset.__len__() * 0.4 / self.pms.batchsize))
+        datasets = []
+        for i in range(aug_N):
+            dataset_aug = eval(self.dataset_name +
+                               "(self.data_path, hyperdict1, hyperdict2, transform=Augmentation(2),)")
+            datasets.append(dataset_aug)
+
+        repeat_dataset = data.ConcatDataset([dataset] + datasets)
+
+        indices = torch.randperm(len(repeat_dataset)).tolist()
+
+        dataset_train = torch.utils.data.Subset(repeat_dataset,
+                                                indices[:-int(0.4 * len(repeat_dataset))])  # swing back to 0.3
+        dataset_test = torch.utils.data.Subset(repeat_dataset, indices[-int(0.4 * len(repeat_dataset)):])
+
+        pool = multiprocessing.Pool()
+        # define training and validation data loaders
+        self.d_train = torch.utils.data.DataLoader(
+            dataset_train, batch_size=self.pms.batchsize, shuffle=True, pin_memory=True,
+            num_workers=int(pool._processes / 2))
+
+        self.d_test = torch.utils.data.DataLoader(
+            dataset_test, batch_size=self.pms.batchsize, shuffle=True, pin_memory=True,
+            num_workers=int(pool._processes / 2))
+
+        print('##############################START TRAINING ######################################')
+
+        if not os.path.exists(self.savepath):
+            os.mkdir(self.savepath)
+        self.optimizer.zero_grad()
+        self.train_cell(self.d_train, self.d_test)
+
+
+        torch.save({"date": datetime.now().isoformat(),'ema': deepcopy(self.ema.ema), 'state_dict': self.model.state_dict(),
+                    'train': self.trainloss_total, 'test': self.testloss_total, "loss_alpha": self.loss_alpha, "loss_beta": self.loss_beta},
+                   self.savepath + 'model_final.tar')
+
+        plot_losses(self.trainloss_total, self.testloss_total, self.savepath)
+
+        return self.model
+
+
+    def train_cell(self, data_loader_train, data_loader_test, check_gradient=True, regularization=False):
+        """
+        """
+
+        nb = len(data_loader_train)  # number of batches
+        nw = self.pms.warmup_iters  # warmup iterations
+        last_opt_step = -1
+
+        record = time.time()
+
+        # note: I will still keep the iteration loop and no real epoch loop
+        for i, ((images_train, targets_train), (images_test, targets_test)) in enumerate(
+                zip(data_loader_train, data_loader_test)):
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")  # suppress 'Detected lr_scheduler.step() before optimizer.step()'
+                self.scheduler.step()
+
+            self.model.train()  # turn on train mode!
+
+            self.optimizer.zero_grad() # YOU HAVE TO KEEP THIS. Do not remove
+
+            (images_train1, images_train2) = images_train
+            images_train1 = images_train1.to(self.device)
+            images_train2 = images_train2.to(self.device)
+
+            targets_train= targets_train.to(self.device)
+
+            # Warmup
+            # ni = i + nb * epoch
+            if i <= nw:
+                xi = [0, nw]  # x interp
+                self.accumulate = max(1, int(np.interp(i, xi, [1, self.pms.nbs / self.pms.batchsize]).round()))
+                for j, x in enumerate(self.optimizer.param_groups):
+                    # Bias lr falls from 0.1 to lr0, all other lrs rise from 0.0 to lr0
+                    x["lr"] = np.interp(
+                        i, xi, [self.pms.warmup_bias_lr if j == 0 else 0.0, x["initial_lr"] * self.lf(i)]
+                    )
+                    if "momentum" in x:
+                        x["momentum"] = np.interp(i, xi, [self.pms.warmup_momentum, self.pms.momentum])
+
+            # Forward
+            with torch.cuda.amp.autocast(self.pms.amp):
+
+                pred = self.model(images_train1, images_train2)
+                ##################################
+                k_sampling_mrad = 0.07360865
+                phasemap_gpts = 1024 # ! #
+                wavelengthA = 0.025
+                k = k_sampling_mrad * 1e-3 * (torch.arange(phasemap_gpts) - phasemap_gpts / 2)
+                kxx, kyy = torch.meshgrid(*(k, k), indexing="ij")  # rad
+                kxx = kxx.to(self.device)
+                kyy = kyy.to(self.device)
+                lossfunc = CombinedLoss(alpha = self.loss_alpha , beta = self.loss_beta)
+                trainloss = lossfunc(pred, targets_train, kxx, kyy, order=3,wavelengthA=wavelengthA)
+                ##################################
+
+                self.trainloss_total.append(trainloss.item())
+
+            # Backward
+            self.scaler.scale(trainloss).backward() #######################
+                    # Save current learning rate and momentum
+            for param_group in self.optimizer.param_groups:
+                self.lr_history.append(param_group['lr'])
+                if 'betas' in param_group:
+                    self.momentum_history.append(param_group['betas'])
+                else:
+                    self.momentum_history.append(None)  # If momentum is not used
+
+            # Optimize - https://pytorch.org/docs/master/notes/amp_examples.html
+            if i - last_opt_step >= self.accumulate:
+                self.optimizer_step() #########################
+                last_opt_step = i
+
+            if check_gradient:
+                for p, n in self.model.named_parameters():
+                    if n[-6:] == 'weight':
+                        if (p.grad > 1e5).any() or (p.grad < 1e-5).any():
+                            print('===========\ngradient:{}\n----------\n{}'.format(n, p.grad))
+                            break
+            ##########################################################################
+            ###Test###
+
+            (images_test1, images_test2) = images_test
+            images_test1 = images_test1.to(self.device)
+            images_test2 = images_test2.to(self.device)
+
+            targets = targets_test.to(self.device)
+            self.model.eval()
+            with torch.no_grad():
+
+                pred = self.model(images_test1, images_test2)
+
+                testloss = lossfunc(pred, targets, kxx, kyy, order=3,wavelengthA=wavelengthA)
+
+            self.testloss_total.append(testloss.item())
+
+            del images_train1, images_test1, images_train2, images_test2, targets  # mannually release GPU memory during training loop.
+
+            if i % self.pms.print_freq == 0:
+                print("Epoch{}\t".format(i), "Train Loss data {:.3f}".format(trainloss.item()))
+                print("Epoch{}\t".format(i), "Test Loss data {:.3f}".format(testloss.item()),
+                      'Cost: {}\t s.'.format(time.time() - record))
+                gpu_usage = get_gpu_info(torch.cuda.current_device())
+                print('GPU memory usage: {}/{}'.format(gpu_usage[0], gpu_usage[1]))
+                record = time.time()
+
+            stop = self.stopper(i, testloss.item())
+
+            if not stop:
+                if self.stopper.best_epoch == i:
+                    torch.save(
+                        {'ema': deepcopy(self.ema.ema),'state_dict': self.model.state_dict(),
+                         'epoch': self.stopper.best_epoch,"date": datetime.now().isoformat(),
+                         "loss_alpha": self.loss_alpha, "loss_beta": self.loss_beta},
+                        self.savepath + 'model_bestepoch.tar')
+            else:
+                break
+
+            if i == (self.pms.epochs - 1):
+                break
+
+        # at finish
+        self.lr = {f"lr/pg{ir}": x["lr"] for ir, x in enumerate(self.optimizer.param_groups)}  # for loggers
+        self.ema.update_attr(self.model, include=["yaml", "nc", "args", "names", "stride", "class_weights"])
+
+        # Validation
+        # to be added
+        print("on_fit_epoch_end")
+        gc.collect()
+        torch.cuda.empty_cache()  # clear GPU memory at end of epoch, may help reduce CUDA out of memory errors
+
+
+class TwoLevelTrainer_3step(BaseTrainer):
+    from AberrationNN.train_utils import plot_losses
     def train_step(self, step, hyperdict1, hyperdict2, loss_alpha, loss_beta, model=None):
 
         # Initialize model
@@ -414,7 +615,7 @@ class TwoLevelTrainer_3step(BaseTrainer):
                     'train': self.trainloss_total, 'test': self.testloss_total, "loss_alpha": self.loss_alpha, "loss_beta": self.loss_beta},
                    self.savepath + 'model_final_step'+str(step)+'.tar')
 
-        plot_losses(self.trainloss_total, self.testloss_total, self.savepath)
+        plot_losses(step, self.trainloss_total, self.testloss_total, self.savepath)
 
         return self.model
 

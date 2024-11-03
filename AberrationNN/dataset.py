@@ -398,6 +398,9 @@ class PatchDataset:
 
 
 class TwoLevelDataset:
+    """
+    Note: The center spot in the template fft images has very high intensity, so taked extra step here to ze
+    """
 
     def __init__(self, data_dir, hyperdict_1, hyperdict_2, filestart=0, transform=None, **kwargs):
 
@@ -527,6 +530,14 @@ class TwoLevelDataset:
         for k in self.keys:
             rf = np.load(path_rf)[k]
             rf = rf if rf.ndim == 2 else rf[0]
+            if self.if_HP:
+                rf = hp_filter(rf)
+                rf = torch.as_tensor(rf, dtype=torch.float32)
+            if self.downsampling1 is not None and self.downsampling1 > 1:
+                rf = F.interpolate(rf[None, None, ...], scale_factor=1 / self.downsampling1, mode='bilinear')[0, 0]
+            if self.pre_normalization:
+                rf = map01(rf)
+
             image_reference = self.wholeFFT(rf)
             if image_reference.shape[-1] > self.fftcropsize1:
                 image_reference = image_reference[
@@ -534,6 +545,9 @@ class TwoLevelDataset:
                                                                                              0] // 2 + self.fftcropsize1 // 2,
                                   image_reference.shape[1] // 2 - self.fftcropsize1 // 2: image_reference.shape[
                                                                                              1] // 2 + self.fftcropsize1 // 2]
+                center = (image_reference.shape[-2] // 2, image_reference.shape[-1] // 2)
+                image_reference[center-5:center+5, center-5:center+5]=image_reference[center-5:center+5, center-5:center+5]
+
                 data.append(image_reference)
 
         return torch.stack(data)
