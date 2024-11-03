@@ -545,8 +545,6 @@ class TwoLevelDataset:
                                                                                              0] // 2 + self.fftcropsize1 // 2,
                                   image_reference.shape[1] // 2 - self.fftcropsize1 // 2: image_reference.shape[
                                                                                              1] // 2 + self.fftcropsize1 // 2]
-                center = (image_reference.shape[-2] // 2, image_reference.shape[-1] // 2)
-                image_reference[center-5:center+5, center-5:center+5]=image_reference[center-5:center+5, center-5:center+5]
 
                 data.append(image_reference)
 
