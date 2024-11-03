@@ -553,8 +553,8 @@ class NewTwoLevelTemplated(nn.Module):
                                          fftsize=hyperdict2['fftcropsize'])
 
     def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        first = self.firstmodel(x)
-        second = self.secondmodel(x, first)
+        first = self.firstmodel(y)
+        second = self.secondmodel(y, first)
 
         return torch.cat([first, second], dim=1)
         # return torch.cat([second[0], first, second[1:]], dim=1)

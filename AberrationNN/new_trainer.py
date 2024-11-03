@@ -6,6 +6,7 @@ import time
 import warnings
 from copy import deepcopy
 from datetime import datetime
+from logging import raiseExceptions
 from typing import Dict
 import json
 import numpy as np
@@ -15,7 +16,7 @@ from sympy.benchmarks.bench_meijerint import alpha
 from torch import optim, nn
 import torch.utils.data as data
 from AberrationNN.MagnificationNet import MagnificationNet
-from AberrationNN.customloss import CombinedLoss
+from AberrationNN.customloss import CombinedLoss, CombinedLossStep
 from AberrationNN.dataset import *
 from AberrationNN.FCAResNet import *
 from AberrationNN.train import hyperdict
@@ -349,15 +350,17 @@ class BaseTrainer:
             self.ema.update(self.model)
 
 
-class TwoLevelTrainer(BaseTrainer):
+class TwoLevelTrainer_3step(BaseTrainer):
 
-    def train(self, hyperdict1, hyperdict2, loss_alpha, loss_beta):
+    def train_step(self, step, hyperdict1, hyperdict2, loss_alpha, loss_beta, model=None):
 
         # Initialize model
         init_seeds(1)
-        self.model = eval(self.model_name + "(hyperdict1, hyperdict2)" )
+        if model is None:
+            self.model = eval(self.model_name + "(hyperdict1, hyperdict2)" )
+            self.model.apply(weights_init)
+
         self.model.to(self.device)
-        self.model.apply(weights_init)
 
         self.stopper = EarlyStopping(patience=self.patience)  #########################################
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.pms.amp)  # automatic mixed precision training for speeding up and save memory
@@ -404,20 +407,20 @@ class TwoLevelTrainer(BaseTrainer):
         if not os.path.exists(self.savepath):
             os.mkdir(self.savepath)
         self.optimizer.zero_grad()
-        self.train_cell(self.d_train, self.d_test)
+        self.train_cell_step(step, self.d_train, self.d_test)
 
 
         torch.save({"date": datetime.now().isoformat(),'ema': deepcopy(self.ema.ema), 'state_dict': self.model.state_dict(),
                     'train': self.trainloss_total, 'test': self.testloss_total, "loss_alpha": self.loss_alpha, "loss_beta": self.loss_beta},
-                   self.savepath + 'model_final.tar')
+                   self.savepath + 'model_final_step'+str(step)+'.tar')
 
         plot_losses(self.trainloss_total, self.testloss_total, self.savepath)
 
         return self.model
 
 
-    def train_cell(self, data_loader_train, data_loader_test,
-                   check_gradient=True, regularization=False):
+    def train_cell_step(self, step, data_loader_train, data_loader_test,
+                        check_gradient=True, regularization=False):
         """
         """
 
@@ -436,6 +439,17 @@ class TwoLevelTrainer(BaseTrainer):
                 self.scheduler.step()
 
             self.model.train()  # turn on train mode!
+            if step == 1:
+                self.model.firstmodel.train(True)
+                self.model.secondmodel.train(False)
+            elif step == 2:
+                self.model.firstmodel.train(False)
+                self.model.secondmodel.train(True)
+            elif step == 3:
+                self.model.firstmodel.train(True)
+                self.model.secondmodel.train(True)
+            else:
+                raiseExceptions("Train step should be 1, or 2 or 3.")
 
             self.optimizer.zero_grad() # YOU HAVE TO KEEP THIS. Do not remove
 
@@ -470,7 +484,7 @@ class TwoLevelTrainer(BaseTrainer):
                 kxx, kyy = torch.meshgrid(*(k, k), indexing="ij")  # rad
                 kxx = kxx.to(self.device)
                 kyy = kyy.to(self.device)
-                lossfunc = CombinedLoss(alpha = self.loss_alpha , beta = self.loss_beta)
+                lossfunc = CombinedLossStep(step, alpha = self.loss_alpha , beta = self.loss_beta)
                 trainloss = lossfunc(pred, targets_train, kxx, kyy, order=3,wavelengthA=wavelengthA)
                 ##################################
 
@@ -532,7 +546,7 @@ class TwoLevelTrainer(BaseTrainer):
                         {'ema': deepcopy(self.ema.ema),'state_dict': self.model.state_dict(),
                          'epoch': self.stopper.best_epoch,"date": datetime.now().isoformat(),
                          "loss_alpha": self.loss_alpha, "loss_beta": self.loss_beta},
-                        self.savepath + 'model_bestepoch.tar')
+                        self.savepath + 'model_bestepoch'+str(step)+'.tar')
             else:
                 break
 
@@ -548,3 +562,5 @@ class TwoLevelTrainer(BaseTrainer):
         print("on_fit_epoch_end")
         gc.collect()
         torch.cuda.empty_cache()  # clear GPU memory at end of epoch, may help reduce CUDA out of memory errors
+
+
