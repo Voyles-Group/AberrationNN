@@ -622,6 +622,124 @@ class TwoLevelDataset:
         return allab
 
 
+class TwoLevelDatasetDifference(TwoLevelDataset):
+    """
+    Remember for such data for model_level1, the first_inputchannels in hyperdict should be 2.
+    """
+    def get_image1(self, img_id):
+        path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
+        data = []
+        for k in self.keys:
+            image = np.load(path)[k][int(img_id[-3:])]
+            if self.transform:
+                image = torch.as_tensor(image, dtype=torch.float32)
+                image = self.transform(image)
+            if self.if_HP:
+                image = hp_filter(image)
+                image = torch.as_tensor(image, dtype=torch.float32)
+            if self.downsampling1 is not None and self.downsampling1 > 1:
+                image = F.interpolate(image[None, None, ...], scale_factor=1 / self.downsampling1, mode='bilinear')[0, 0]
+            if self.pre_normalization:
+                image = map01(image)
+
+            image_aberration = self.wholeFFT(image)
+            if image_aberration.shape[-1] > self.fftcropsize1:
+                image_aberration = image_aberration[
+                                   image_aberration.shape[0] // 2 - self.fftcropsize1// 2: image_aberration.shape[
+                                                                                               0] // 2 + self.fftcropsize1 // 2,
+                                   image_aberration.shape[1] // 2 - self.fftcropsize1 // 2: image_aberration.shape[
+                                                                                               1] // 2 + self.fftcropsize1 // 2]
+            data.append(image_aberration)
+
+        out = data[1] - data[0]
+
+        data_rf = []
+        path_rf = self.data_dir + img_id[:-3] + '/standard_reference.npz'
+        for k in self.keys:
+            rf = np.load(path_rf)[k]
+            rf = rf if rf.ndim == 2 else rf[0]
+            if self.if_HP:
+                rf = hp_filter(rf)
+                rf = torch.as_tensor(rf, dtype=torch.float32)
+            if self.downsampling1 is not None and self.downsampling1 > 1:
+                rf = F.interpolate(rf[None, None, ...], scale_factor=1 / self.downsampling1, mode='bilinear')[0, 0]
+            if self.pre_normalization:
+                rf = map01(rf)
+
+            image_reference = self.wholeFFT(rf)
+            if image_reference.shape[-1] > self.fftcropsize1:
+                image_reference = image_reference[
+                                  image_reference.shape[0] // 2 - self.fftcropsize1 // 2: image_reference.shape[
+                                                                                             0] // 2 + self.fftcropsize1 // 2,
+                                  image_reference.shape[1] // 2 - self.fftcropsize1 // 2: image_reference.shape[
+                                                                                             1] // 2 + self.fftcropsize1 // 2]
+
+                data_rf.append(image_reference)
+        out_rf = data_rf[1] - data_rf[0]
+
+        return torch.stack([out, out_rf])
+
+    def get_image2(self, img_id):
+        path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'
+        data,  data_rf = [], []
+        for k in self.keys:
+            image = np.load(path)[k][int(img_id[-3:])]
+            if self.if_HP:
+                image = hp_filter(image)
+                image = torch.as_tensor(image, dtype=torch.float32)
+            if self.downsampling2 is not None and self.downsampling2 > 1:
+                image = F.interpolate(image[None, None, ...], scale_factor=1 / self.downsampling2, mode='bilinear')[0, 0]
+            if self.transform:
+                image = torch.as_tensor(image, dtype=torch.float32)
+                image = self.transform(image)
+
+            if self.pre_normalization:
+                image = map01(image)
+            if self.transform:
+                image = torch.as_tensor(image, dtype=torch.float32)
+                image = self.transform(image)
+
+            windows = image.unfold(0, self.patch2, self.patch2)
+            windows = windows.unfold(1, self.patch2, self.patch2)
+            n = int(image.shape[0] / self.patch2)
+            windows = windows.reshape(n ** 2, windows.shape[-2],  windows.shape[-1])
+            image_aberration = self.singleFFT(windows)
+            if image_aberration.shape[-1] > self.fftcropsize2:
+                image_aberration = image_aberration[:, image_aberration.shape[-2] // 2 - self.fftcropsize2//2: image_aberration.shape[-2] // 2 + self.fftcropsize2//2,
+                image_aberration.shape[-1] // 2 - self.fftcropsize2//2: image_aberration.shape[-1] // 2 + self.fftcropsize2//2]
+
+            data.append(image_aberration)
+        # out = torch.vstack(data)
+        out = data[1] - data[0]
+
+        out_rf = []
+        if self.if_reference:
+            path_rf = self.data_dir + img_id[:-3] + '/standard_reference.npz'
+            for k in self.keys:
+                image = np.load(path_rf)[k]
+                if self.if_HP:
+                    image = hp_filter(image)
+                    image = torch.as_tensor(image, dtype=torch.float32)
+                if self.downsampling2 is not None and self.downsampling2 > 1:
+                    image = F.interpolate(image[None, None, ...], scale_factor=1 / self.downsampling2, mode='bilinear')[0, 0]
+                if self.pre_normalization:
+                    image = map01(image)
+
+                windows = image.unfold(0, self.patch2, self.patch2)
+                windows = windows.unfold(1, self.patch2, self.patch2)
+                n = int(image.shape[0] / self.patch2)
+                windows = windows.reshape(n ** 2, windows.shape[-2],  windows.shape[-1])
+                image_reference = self.singleFFT(windows)
+                if image_reference.shape[-1] > self.fftcropsize2:
+                    image_reference = image_reference[:, image_reference.shape[-2] // 2 - self.fftcropsize2//2: image_reference.shape[-2] // 2 + self.fftcropsize2//2,
+                    image_reference.shape[-1] // 2 - self.fftcropsize2//2: image_reference.shape[-1] // 2 + self.fftcropsize2//2]
+                data_rf.append(image_reference)
+
+            # out = out - torch.vstack(data_rf)
+            out_rf = data_rf[1] - data_rf[0]
+
+        return torch.vstack([out, out_rf])
+
 class Ronchi2fftDatasetAll:
     """
     Default operations:
