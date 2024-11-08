@@ -21,28 +21,12 @@ from AberrationNN.dataset import *
 from AberrationNN.FCAResNet import *
 from AberrationNN.train import hyperdict
 
-from AberrationNN.train_utils import Parameters, init_seeds, weights_init, EarlyStopping, ModelEMA, get_gpu_info
+from AberrationNN.train_utils import Parameters, init_seeds, weights_init, EarlyStopping, ModelEMA, get_gpu_info, plot_losses
 
 
 def one_cycle(y1=0.0, y2=1.0, steps=100):
     """Returns a lambda function for sinusoidal ramp from y1 to y2 https://arxiv.org/pdf/1812.01187.pdf."""
     return lambda x: max((1 - math.cos(x * math.pi / steps)) / 2, 0) * (y2 - y1) + y1
-
-def plot_losses(train_loss, test_loss, savepath) -> None:
-
-    """
-    Plots train and test losses
-    """
-    print('Plotting training history')
-
-    fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-    ax.plot(train_loss, label='Train')
-    ax.plot(test_loss, label='Test')
-    ax.set_xlabel('Epoch')
-    ax.set_ylabel('Loss')
-    ax.legend()
-    # plt.show()
-    plt.savefig(savepath+'history.png')
 
 
 class BaseTrainer:
@@ -624,6 +608,7 @@ class TwoLevelTrainer_3step(BaseTrainer):
                         check_gradient=True, regularization=False):
         """
         """
+        self.trainloss_total, self.testloss_total = [],[] # so that the loss from difference steps are not stack together
 
         nb = len(data_loader_train)  # number of batches
         nw = self.pms.warmup_iters  # warmup iterations

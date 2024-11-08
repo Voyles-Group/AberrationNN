@@ -419,6 +419,7 @@ class TwoLevelDataset:
         self.transform = transform
         self.imagesize = hyperdict_1['imagesize']
         self.if_HP = hyperdict_1['if_HP']
+        self.if_reference= hyperdict_1['if_reference']
 
         self.downsampling1 = hyperdict_1['downsampling']
         self.downsampling2 = hyperdict_2['downsampling']
