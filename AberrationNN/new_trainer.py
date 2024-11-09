@@ -540,11 +540,11 @@ class TwoLevelTrainer_3step(BaseTrainer):
     def train_step(self, step, hyperdict1, hyperdict2, loss_alpha, loss_beta, model=None):
 
         # Initialize model
+        self.model = model
         init_seeds(1)
-        if model is None:
+        if self.model is None:
             self.model = eval(self.model_name + "(hyperdict1, hyperdict2)" )
             self.model.apply(weights_init)
-
         self.model.to(self.device)
 
         self.stopper = EarlyStopping(patience=self.patience)  #########################################
