@@ -102,7 +102,7 @@ class CombinedLoss(nn.Module):
                                   (kyy ** 2 * kyy + kyy * kxx ** 2)
                                   + target_coeff[:, 6] * (kxx ** 2 * kxx - 3 * kxx * kyy ** 2) + target_coeff[:, 7] * (- kyy ** 2 * kyy + 3 * kyy * kxx ** 2))
         if order >= 3:
-            chi_loss = chi_loss + 1 / 4 * (1e3 * predicted_coeff[:, 3] * (kxx ** 4 + 2 * kyy ** 2 * kxx ** 2 + kyy ** 4)) - \
+            chi_loss = chi_loss + 1 / 4 * (1e2 * predicted_coeff[:, 3] * (kxx ** 4 + 2 * kyy ** 2 * kxx ** 2 + kyy ** 4)) - \
                        1 / 4 * (1e3 * target_coeff[:, 3] * (kxx ** 4 + 2 * kyy ** 2 * kxx ** 2 + kyy ** 4))
         # chi_loss[batch, kxx, kyy]
 

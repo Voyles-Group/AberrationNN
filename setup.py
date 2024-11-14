@@ -15,8 +15,8 @@ setup(
     install_requires=[
         "torch==2.1.2",
         "numpy>=1.24.1",
-        "matplotlib==3.7.1",
-        "scipy==1.10.1",
+        "matplotlib>=3.7.1",
+        "scipy==1.10.1", # does this have to?
         "pandas",
         "torchmetrics",
         "scikit-image"
