@@ -456,7 +456,7 @@ class TwoLevelTrainer(BaseTrainer):
                 kxx = kxx.to(self.device)
                 kyy = kyy.to(self.device)
                 lossfunc = CombinedLoss(alpha = self.loss_alpha , beta = self.loss_beta)
-                trainloss = lossfunc(pred, targets_train, kxx, kyy, order=3,wavelengthA=wavelengthA)
+                trainloss = lossfunc(pred, targets_train, kxx, kyy, order=2,wavelengthA=wavelengthA)
                 ##################################
 
                 self.trainloss_total.append(trainloss.item())
@@ -495,7 +495,7 @@ class TwoLevelTrainer(BaseTrainer):
 
                 pred = self.model(images_test1, images_test2)
 
-                testloss = lossfunc(pred, targets, kxx, kyy, order=3,wavelengthA=wavelengthA)
+                testloss = lossfunc(pred, targets, kxx, kyy, order=2,wavelengthA=wavelengthA)
 
             self.testloss_total.append(testloss.item())
 
@@ -671,7 +671,7 @@ class TwoLevelTrainer_3step(BaseTrainer):
                 kxx = kxx.to(self.device)
                 kyy = kyy.to(self.device)
                 lossfunc = CombinedLossStep(step, alpha = self.loss_alpha , beta = self.loss_beta)
-                trainloss = lossfunc(pred, targets_train, kxx, kyy, order=3,wavelengthA=wavelengthA)
+                trainloss = lossfunc(pred, targets_train, kxx, kyy, order=2,wavelengthA=wavelengthA)
                 ##################################
 
                 self.trainloss_total.append(trainloss.item())
@@ -710,7 +710,7 @@ class TwoLevelTrainer_3step(BaseTrainer):
 
                 pred = self.model(images_test1, images_test2)
 
-                testloss = lossfunc(pred, targets, kxx, kyy, order=3,wavelengthA=wavelengthA)
+                testloss = lossfunc(pred, targets, kxx, kyy, order=2,wavelengthA=wavelengthA)
 
             self.testloss_total.append(testloss.item())
 

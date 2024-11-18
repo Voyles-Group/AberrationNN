@@ -19,7 +19,7 @@ class CombinedLossStep(nn.Module):
         self.beta = beta
 
 
-    def forward(self, predicted_coeff, target_coeff, kxx, kyy, wavelengthA = 0.025, order = 3):
+    def forward(self, predicted_coeff, target_coeff, kxx, kyy, wavelengthA = 0.025, order = 2):
 
         # data loss from the coefficients residuals
         data_loss_1 = F.smooth_l1_loss(predicted_coeff[:4], target_coeff[:4])
@@ -41,26 +41,26 @@ class CombinedLossStep(nn.Module):
         target_coeff = (target_coeff * 2 * np.pi / wavelengthA)[..., None, None].expand(-1, -1, phasemap_gpts, phasemap_gpts)
         chi_loss = 0
         if self.step!=2:
-            chi_loss = 1 / 2 * (predicted_coeff[:, 0] * (kxx ** 2 + kyy ** 2) + predicted_coeff[:, 1] * (
+            chi_loss = 1 / 2 * (0.1 * predicted_coeff[:, 0] * (kxx ** 2 + kyy ** 2) + predicted_coeff[:, 1] * (
                     kxx ** 2 - kyy ** 2) + 2 * predicted_coeff[:, 2] * kxx * kyy) \
-                       - 1 / 2 * (target_coeff[:, 0] * (kxx ** 2 + kyy ** 2) + target_coeff[:, 1] * (
+                       - 1 / 2 * (0.1 * target_coeff[:, 0] * (kxx ** 2 + kyy ** 2) + target_coeff[:, 1] * (
                     kxx ** 2 - kyy ** 2) + 2 * target_coeff[:, 2] * kxx * kyy)
         if order >= 2 and self.step>=2:
-            chi_loss = chi_loss + 1 / 3 * (predicted_coeff[:, 4] * (kxx ** 2 * kxx + kxx * kyy ** 2) + predicted_coeff[:, 5] *
-                                           (kyy ** 2 * kyy + kyy * kxx ** 2) + predicted_coeff[:, 6] * (kxx ** 2 * kxx - 3 * kxx * kyy ** 2) +
-                                           predicted_coeff[:, 7] * (- kyy ** 2 * kyy + 3 * kyy * kxx ** 2)) \
-                       - 1 / 3 * (target_coeff[:, 4] * (kxx ** 2 * kxx + kxx * kyy ** 2) + target_coeff[:, 5] *
+            chi_loss = chi_loss + 1 / 3 * (predicted_coeff[:, 3] * (kxx ** 2 * kxx + kxx * kyy ** 2) + predicted_coeff[:, 4] *
+                                           (kyy ** 2 * kyy + kyy * kxx ** 2) + predicted_coeff[:, 5] * (kxx ** 2 * kxx - 3 * kxx * kyy ** 2) +
+                                           predicted_coeff[:, 6] * (- kyy ** 2 * kyy + 3 * kyy * kxx ** 2)) \
+                       - 1 / 3 * (target_coeff[:, 3] * (kxx ** 2 * kxx + kxx * kyy ** 2) + target_coeff[:, 4] *
                                   (kyy ** 2 * kyy + kyy * kxx ** 2)
-                                  + target_coeff[:, 6] * (kxx ** 2 * kxx - 3 * kxx * kyy ** 2) + target_coeff[:, 7] * (- kyy ** 2 * kyy + 3 * kyy * kxx ** 2))
-        if order >= 3 and self.step!=2:
-            chi_loss = chi_loss + 1 / 4 * (1e3 * predicted_coeff[:, 3] * (kxx ** 4 + 2 * kyy ** 2 * kxx ** 2 + kyy ** 4)) - \
-                       1 / 4 * (1e3 * target_coeff[:, 3] * (kxx ** 4 + 2 * kyy ** 2 * kxx ** 2 + kyy ** 4))
+                                  + target_coeff[:, 5] * (kxx ** 2 * kxx - 3 * kxx * kyy ** 2) + target_coeff[:, 6] * (- kyy ** 2 * kyy + 3 * kyy * kxx ** 2))
+        # if order >= 3 and self.step!=2:
+        #     chi_loss = chi_loss + 1 / 4 * (1e3 * predicted_coeff[:, 3] * (kxx ** 4 + 2 * kyy ** 2 * kxx ** 2 + kyy ** 4)) - \
+        #                1 / 4 * (1e3 * target_coeff[:, 3] * (kxx ** 4 + 2 * kyy ** 2 * kxx ** 2 + kyy ** 4))
         # chi_loss[batch, kxx, kyy]
 
         chi_loss_l2 = (chi_loss**2).mean(axis=(1, 2))  # averaged the L2 at every k pixel
         chi_loss_l2 = chi_loss_l2.mean()  # averaged the batch
         # print( 'Losses: ',  data_loss_1,data_loss_2, chi_loss_l2.mean())
-        return data_loss + chi_loss_l2
+        return data_loss + self.beta * chi_loss_l2
 
 
 class CombinedLoss(nn.Module):
@@ -75,7 +75,7 @@ class CombinedLoss(nn.Module):
         self.beta = beta
 
 
-    def forward(self, predicted_coeff, target_coeff, kxx, kyy, wavelengthA = 0.025, order = 3):
+    def forward(self, predicted_coeff, target_coeff, kxx, kyy, wavelengthA = 0.025, order = 2):
 
         # data loss from the coefficients residuals
         data_loss_1 = F.smooth_l1_loss(predicted_coeff[:4], target_coeff[:4])
@@ -95,21 +95,21 @@ class CombinedLoss(nn.Module):
                    - 1 / 2 * (target_coeff[:, 0] * (kxx ** 2 + kyy ** 2) + target_coeff[:, 1] * (
                 kxx ** 2 - kyy ** 2) + 2 * target_coeff[:, 2] * kxx * kyy)
         if order >= 2:
-            chi_loss = chi_loss + 1 / 3 * (predicted_coeff[:, 4] * (kxx ** 2 * kxx + kxx * kyy ** 2) + predicted_coeff[:, 5] *
-                                           (kyy ** 2 * kyy + kyy * kxx ** 2) + predicted_coeff[:, 6] * (kxx ** 2 * kxx - 3 * kxx * kyy ** 2) +
-                                           predicted_coeff[:, 7] * (- kyy ** 2 * kyy + 3 * kyy * kxx ** 2)) \
-                       - 1 / 3 * (target_coeff[:, 4] * (kxx ** 2 * kxx + kxx * kyy ** 2) + target_coeff[:, 5] *
+            chi_loss = chi_loss + 1 / 3 * (predicted_coeff[:, 3] * (kxx ** 2 * kxx + kxx * kyy ** 2) + predicted_coeff[:, 4] *
+                                           (kyy ** 2 * kyy + kyy * kxx ** 2) + predicted_coeff[:, 5] * (kxx ** 2 * kxx - 3 * kxx * kyy ** 2) +
+                                           predicted_coeff[:, 6] * (- kyy ** 2 * kyy + 3 * kyy * kxx ** 2)) \
+                       - 1 / 3 * (target_coeff[:, 3] * (kxx ** 2 * kxx + kxx * kyy ** 2) + target_coeff[:, 4] *
                                   (kyy ** 2 * kyy + kyy * kxx ** 2)
-                                  + target_coeff[:, 6] * (kxx ** 2 * kxx - 3 * kxx * kyy ** 2) + target_coeff[:, 7] * (- kyy ** 2 * kyy + 3 * kyy * kxx ** 2))
-        if order >= 3:
-            chi_loss = chi_loss + 1 / 4 * (1e2 * predicted_coeff[:, 3] * (kxx ** 4 + 2 * kyy ** 2 * kxx ** 2 + kyy ** 4)) - \
-                       1 / 4 * (1e3 * target_coeff[:, 3] * (kxx ** 4 + 2 * kyy ** 2 * kxx ** 2 + kyy ** 4))
+                                  + target_coeff[:, 5] * (kxx ** 2 * kxx - 3 * kxx * kyy ** 2) + target_coeff[:, 6] * (- kyy ** 2 * kyy + 3 * kyy * kxx ** 2))
+        # if order >= 3:
+        #     chi_loss = chi_loss + 1 / 4 * (1e2 * predicted_coeff[:, 3] * (kxx ** 4 + 2 * kyy ** 2 * kxx ** 2 + kyy ** 4)) - \
+        #                1 / 4 * (1e3 * target_coeff[:, 3] * (kxx ** 4 + 2 * kyy ** 2 * kxx ** 2 + kyy ** 4))
         # chi_loss[batch, kxx, kyy]
 
         chi_loss_l2 = (chi_loss**2).mean(axis=(1, 2))  # averaged the L2 at every k pixel
         chi_loss_l2 = chi_loss_l2.mean()  # averaged the batch
         # print( 'Losses: ',  data_loss_1,data_loss_2, chi_loss_l2.mean())
-        return data_loss + chi_loss_l2
+        return data_loss + self.beta * chi_loss_l2
 
 
 
