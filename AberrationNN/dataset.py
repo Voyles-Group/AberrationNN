@@ -411,7 +411,7 @@ class TwoLevelDataset:
         filenum = len(os.listdir(data_dir))
         nimage = np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz')[self.keys[0]].shape[0]
         # folder name + index number 000-099
-        self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
+        self.ids = [i + "%03d" % j for i in [*sorted(os.listdir(data_dir))[filestart:filestart + filenum]] for j in
                     [*range(nimage)]]
 
         self.normalization = hyperdict_1['normalization']
@@ -619,7 +619,7 @@ class TwoLevelDataset:
                  'C21': target[3], 'phi21': target[4], 'C23': target[5], 'phi23': target[6], 'Cs': target[7]}
         car = polar2cartesian(polar)
         # allab = [car['C10'], car['C12a'], car['C12b'], car['C30']*1e-2, car['C21a'], car['C21b'], car['C23a'], car['C23b']]
-        allab = [car['C10'] * 10, car['C12a'], car['C12b'], car['C21a'], car['C21b'], car['C23a'], car['C23b']]
+        allab = [car['C10'], car['C12a'], car['C12b'], car['C21a'], car['C21b'], car['C23a'], car['C23b']]
 
         allab = torch.as_tensor(allab, dtype=torch.float32)
         return allab
@@ -767,9 +767,10 @@ class Ronchi2fftDatasetAll:
                  transform=None, patch=32, imagesize=512, downsampling=2, if_HP=True, if_reference=False):
         self.data_dir = data_dir
         filenum = len(os.listdir(data_dir))
-        nimage = np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz')['defocus'].shape[0]
+        self.keys = np.array(list(np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz').keys())) # 'overfocus', 'defocus'
+        nimage = np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz')[self.keys[0]].shape[0]
         # folder name + index number 000-099
-        self.ids = [i + "%03d" % j for i in [*os.listdir(data_dir)[filestart:filestart + filenum]] for j in
+        self.ids = [i + "%03d" % j for i in [*sorted(os.listdir(data_dir))[filestart:filestart + filenum]] for j in
                     [*range(nimage)]]
         self.normalization = normalization
         self.pre_normalization = pre_normalization
@@ -792,8 +793,21 @@ class Ronchi2fftDatasetAll:
 
     def get_image(self, img_id):
         path = self.data_dir + img_id[:-3] + '/ronchi_stack.npz'  #####
-        image_o = np.load(path)['overfocus'][int(img_id[-3:])]  #####
-        image_d = np.load(path)['defocus'][int(img_id[-3:])]  ########
+        if self.keys[0]=='overfocus':
+
+            image_o = np.load(path)['overfocus'][int(img_id[-3:])]  #####
+            image_d = np.load(path)['defocus'][int(img_id[-3:])]  ########
+        elif self.keys[0]=='A':
+            image_o = np.load(path)['B'][int(img_id[-3:])]  #####
+            image_d = np.load(path)['A'][int(img_id[-3:])]  ########
+
+        else:
+            print('Key error')
+        if self.imagesize < image_o.shape[-1]:
+            image_o = image_o[self.imagesize//2 : -self.imagesize//2, self.imagesize//2 : -self.imagesize//2]
+            image_d = image_d[self.imagesize//2 : -self.imagesize//2, self.imagesize//2 : -self.imagesize//2]
+
+
         if self.if_HP:
             image_o = hp_filter(image_o)
             image_d = hp_filter(image_d)
@@ -806,7 +820,7 @@ class Ronchi2fftDatasetAll:
             image_d = self.transform(image_d)
             image_o = self.transform(image_o)
 
-        image = ronchis2ffts(image_d, image_o, self.patch, 2, True, self.pre_normalization)
+        image = ronchis2ffts(image_d, image_o, self.patch, 2, True, self.pre_normalization) #for keys AB, it should be A,  B.
 
         if self.if_reference:
             reference = np.load(self.data_dir + img_id[:-3] + '/standard_reference_d_o.npy')  ##########

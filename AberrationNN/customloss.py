@@ -41,9 +41,9 @@ class CombinedLossStep(nn.Module):
         target_coeff = (target_coeff * 2 * np.pi / wavelengthA)[..., None, None].expand(-1, -1, phasemap_gpts, phasemap_gpts)
         chi_loss = 0
         if self.step!=2:
-            chi_loss = 1 / 2 * (0.1 * predicted_coeff[:, 0] * (kxx ** 2 + kyy ** 2) + predicted_coeff[:, 1] * (
+            chi_loss = 1 / 2 * (predicted_coeff[:, 0] * (kxx ** 2 + kyy ** 2) + predicted_coeff[:, 1] * (
                     kxx ** 2 - kyy ** 2) + 2 * predicted_coeff[:, 2] * kxx * kyy) \
-                       - 1 / 2 * (0.1 * target_coeff[:, 0] * (kxx ** 2 + kyy ** 2) + target_coeff[:, 1] * (
+                       - 1 / 2 * (target_coeff[:, 0] * (kxx ** 2 + kyy ** 2) + target_coeff[:, 1] * (
                     kxx ** 2 - kyy ** 2) + 2 * target_coeff[:, 2] * kxx * kyy)
         if order >= 2 and self.step>=2:
             chi_loss = chi_loss + 1 / 3 * (predicted_coeff[:, 3] * (kxx ** 2 * kxx + kxx * kyy ** 2) + predicted_coeff[:, 4] *
