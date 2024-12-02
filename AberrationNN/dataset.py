@@ -9,7 +9,7 @@ import itertools
 import pandas as pd
 from skimage import filters
 from random import randrange
-
+import random
 wavelength_A = 0.025079340317328468
 
 # path = '/srv/home/jwei74/AberrationEstimation/BeamtiltPair10mrad_STO_defocus250nm/'
@@ -400,19 +400,25 @@ class PatchDataset:
 class TwoLevelDataset:
     """
     Note: The center spot in the template fft images has very high intensity, so taked extra step here to ze
+    :argument
+    subset: whether we use subset of the folders in the datapath. if subset = 1, no, if subset <1, use that ratio
     """
 
-    def __init__(self, data_dir, hyperdict_1, hyperdict_2, filestart=0, transform=None, **kwargs):
+    def __init__(self, data_dir, hyperdict_1, hyperdict_2, filestart=0, transform=None, subset = 1, **kwargs):
 
 
         self.picked_keys = hyperdict_1['data_keys']
         self.keys = np.array(list(np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz').keys()))[self.picked_keys]
         self.data_dir = data_dir
+        self.subset = subset
         filenum = len(os.listdir(data_dir))
         nimage = np.load(data_dir + os.listdir(data_dir)[0] + '/ronchi_stack.npz')[self.keys[0]].shape[0]
         # folder name + index number 000-099
-        self.ids = [i + "%03d" % j for i in [*sorted(os.listdir(data_dir))[filestart:filestart + filenum]] for j in
-                    [*range(nimage)]]
+        datalist = sorted(os.listdir(data_dir))[filestart:filestart + filenum]
+        if self.subset < 1:
+            datalist= random.sample(datalist, int(len(datalist) * self.subset))
+
+        self.ids = [i + "%03d" % j for i in [*datalist] for j in [*range(nimage)]]
 
         self.normalization = hyperdict_1['normalization']
         self.pre_normalization = hyperdict_1['pre_normalization']

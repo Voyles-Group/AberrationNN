@@ -30,7 +30,7 @@ def one_cycle(y1=0.0, y2=1.0, steps=100):
 
 
 class BaseTrainer:
-    def __init__(self,dataset_name:str, model_name:str, data_path: str, device: str, hyperdict: Dict, savepath: str):
+    def __init__(self,dataset_name:str, model_name:str, data_path: str, device: str, hyperdict: Dict, savepath: str, subset:float):
         self.dataset_name = dataset_name
         self.model_name = model_name
         self.d_train, self.d_test = None, None
@@ -48,6 +48,7 @@ class BaseTrainer:
         self.pms = Parameters(**hyperdict)
         self.savepath = savepath
         self.patience = self.pms.patience
+        self.subset = subset
         if not os.path.exists(self.savepath):
             os.mkdir(self.savepath)
         with open(self.savepath + 'hyperdict.json', 'w') as fp:
@@ -358,13 +359,15 @@ class TwoLevelTrainer(BaseTrainer):
         self.loss_beta = loss_beta
 
         # Initialize dataset
-        dataset = eval(self.dataset_name + "(self.data_path, hyperdict1, hyperdict2,)")
+        dataset = eval(self.dataset_name + "(self.data_path, hyperdict1, hyperdict2, subset = self.subset)")
+        print('The training dataset contains ',len(dataset.ids),'samples')
         # print("The input data shape is ", dataset.data_shape())
         aug_N = int(self.pms.epochs / (dataset.__len__() * 0.4 / self.pms.batchsize))
         datasets = []
         for i in range(aug_N):
-            dataset_aug = eval(self.dataset_name +
-                               "(self.data_path, hyperdict1, hyperdict2, transform=Augmentation(2),)")
+            dataset_aug = deepcopy(dataset)
+            dataset_aug.transform = Augmentation(2) # this keep the subset folders the same
+            # dataset_aug = eval(self.dataset_name +"(self.data_path, hyperdict1, hyperdict2, transform=Augmentation(2),)")
             datasets.append(dataset_aug)
 
         repeat_dataset = data.ConcatDataset([dataset] + datasets)
