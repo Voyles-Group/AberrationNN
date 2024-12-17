@@ -530,31 +530,3 @@ class TwoLevelTemplated(nn.Module):
 
         return torch.cat([first, second], dim=1)
         # return torch.cat([second[0], first, second[1:]], dim=1)
-
-class NewTwoLevelTemplated(nn.Module):
-    # use the same hyperdict for two level, to be optimized
-    def __init__(self, hyperdict1, hyperdict2):
-        super(NewTwoLevelTemplated, self).__init__()
-
-        self.firstmodel = FCAResNetC1A1Cs(first_inputchannels= hyperdict2['first_inputchannels'],
-                                         reduction=hyperdict2['reduction'],
-                                         skip_connection=hyperdict2['skip_connection'],
-                                         fca_block_n=hyperdict2['fca_block_n'],
-                                         if_FT=hyperdict2['if_FT'],
-                                         if_CAB=hyperdict2['if_CAB'],
-                                         fftsize=hyperdict2['fftcropsize'])
-
-        self.secondmodel = FCAResNetB2A2(first_inputchannels= hyperdict2['first_inputchannels'],
-                                         reduction=hyperdict2['reduction'],
-                                         skip_connection=hyperdict2['skip_connection'],
-                                         fca_block_n=hyperdict2['fca_block_n'],
-                                         if_FT=hyperdict2['if_FT'],
-                                         if_CAB=hyperdict2['if_CAB'],
-                                         fftsize=hyperdict2['fftcropsize'])
-
-    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        first = self.firstmodel(y)
-        second = self.secondmodel(y, first)
-
-        return torch.cat([first, second], dim=1)
-        # return torch.cat([second[0], first, second[1:]], dim=1)

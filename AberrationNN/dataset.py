@@ -399,7 +399,6 @@ class PatchDataset:
 
 class TwoLevelDataset:
     """
-    Note: The center spot in the template fft images has very high intensity, so taked extra step here to ze
     :argument
     subset: whether we use subset of the folders in the datapath. if subset = 1, no, if subset <1, use that ratio
     """
@@ -513,6 +512,8 @@ class TwoLevelDataset:
         data = []
         for k in self.keys:
             image = np.load(path)[k][int(img_id[-3:])]
+            if self.imagesize < image.shape[-1]:
+                image = image[self.imagesize//2 : -self.imagesize//2, self.imagesize//2 : -self.imagesize//2]
             if self.transform:
                 image = torch.as_tensor(image, dtype=torch.float32)
                 image = self.transform(image)
@@ -533,28 +534,6 @@ class TwoLevelDataset:
                                                                                                1] // 2 + self.fftcropsize1 // 2]
             data.append(image_aberration)
 
-        path_rf = self.data_dir + img_id[:-3] + '/standard_reference.npz'
-        for k in self.keys:
-            rf = np.load(path_rf)[k]
-            rf = rf if rf.ndim == 2 else rf[0]
-            if self.if_HP:
-                rf = hp_filter(rf)
-                rf = torch.as_tensor(rf, dtype=torch.float32)
-            if self.downsampling1 is not None and self.downsampling1 > 1:
-                rf = F.interpolate(rf[None, None, ...], scale_factor=1 / self.downsampling1, mode='bilinear')[0, 0]
-            if self.pre_normalization:
-                rf = map01(rf)
-
-            image_reference = self.wholeFFT(rf)
-            if image_reference.shape[-1] > self.fftcropsize1:
-                image_reference = image_reference[
-                                  image_reference.shape[0] // 2 - self.fftcropsize1 // 2: image_reference.shape[
-                                                                                             0] // 2 + self.fftcropsize1 // 2,
-                                  image_reference.shape[1] // 2 - self.fftcropsize1 // 2: image_reference.shape[
-                                                                                             1] // 2 + self.fftcropsize1 // 2]
-
-                data.append(image_reference)
-
         return torch.stack(data)
 
     def get_image2(self, img_id):
@@ -562,6 +541,8 @@ class TwoLevelDataset:
         data,  data_rf = [], []
         for k in self.keys:
             image = np.load(path)[k][int(img_id[-3:])]
+            if self.imagesize < image.shape[-1]:
+                image = image[self.imagesize//2 : -self.imagesize//2, self.imagesize//2 : -self.imagesize//2]
             if self.if_HP:
                 image = hp_filter(image)
                 image = torch.as_tensor(image, dtype=torch.float32)
