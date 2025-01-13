@@ -429,8 +429,6 @@ class TwoLevelDataset:
         self.downsampling1 = hyperdict_1['downsampling']
         self.downsampling2 = hyperdict_2['downsampling']
 
-        self.if_reference = hyperdict_2['if_reference']
-
         self.fft_pad_factor1 = hyperdict_1['fft_pad_factor']
         self.fft_pad_factor2 = hyperdict_2['fft_pad_factor']
 
