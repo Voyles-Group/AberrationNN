@@ -1,9 +1,5 @@
-import bisect
-import glob
 import math
 import os
-import re
-import time
 import random
 from copy import deepcopy
 import torch
@@ -13,7 +9,7 @@ import numpy as np
 from torch import nn
 from torch.nn import Conv2d, ConvTranspose2d
 import subprocess
-from typing import List, Union
+from types import SimpleNamespace
 
 
 def init_seeds(seed=0, deterministic=True):
@@ -189,7 +185,7 @@ def get_gpu_info(cuda_device: int) -> int:
     gpu_usage = [int(y) for y in result.split(',')]
     return gpu_usage[0:2]
 
-from types import SimpleNamespace
+
 class Parameters(SimpleNamespace):
     """refered to Ultralytics IterableSimpleNamespace is an extension class of SimpleNamespace that adds iterable functionality and
     enables usage with dict() and for loops.

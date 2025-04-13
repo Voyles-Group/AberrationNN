@@ -1,7 +1,5 @@
 import gc
-import math
 import multiprocessing
-import os
 import time
 import warnings
 from copy import deepcopy
@@ -9,18 +7,12 @@ from datetime import datetime
 from logging import raiseExceptions
 from typing import Dict
 import json
-import numpy as np
 import torch
-from matplotlib import pyplot as plt
-from sympy.benchmarks.bench_meijerint import alpha
-from torch import optim, nn
+from torch import optim
 import torch.utils.data as data
-from AberrationNN.MagnificationNet import MagnificationNet
 from AberrationNN.customloss import CombinedLoss, CombinedLossStep
 from AberrationNN.dataset import *
 from AberrationNN.FCAResNet import *
-from AberrationNN.train import hyperdict
-
 from AberrationNN.train_utils import Parameters, init_seeds, weights_init, EarlyStopping, ModelEMA, get_gpu_info, plot_losses
 
 
