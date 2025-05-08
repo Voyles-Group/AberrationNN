@@ -150,6 +150,9 @@ class TwoLevelDataset:
         data = []
         for k in self.keys:
             image = np.load(path)[k][int(img_id[-3:])]
+            if image.ndim != 2:
+                image = np.load(path)[k] # when there is only one image saves as [w, h]
+
             if self.imagesize < image.shape[-1]:
                 image = image[self.imagesize//2 : -self.imagesize//2, self.imagesize//2 : -self.imagesize//2]
             if self.transform:
@@ -179,6 +182,9 @@ class TwoLevelDataset:
         data,  data_rf = [], []
         for k in self.keys:
             image = np.load(path)[k][int(img_id[-3:])]
+            if image.ndim != 2:
+                image = np.load(path)[k] # when there is only one image saves as [w, h]
+
             if self.imagesize < image.shape[-1]:
                 image = image[self.imagesize//2 : -self.imagesize//2, self.imagesize//2 : -self.imagesize//2]
             if self.if_HP:
@@ -319,6 +325,9 @@ class TwoLevelDatasetDifference(TwoLevelDataset):
         data,  data_rf = [], []
         for k in self.keys:
             image = np.load(path)[k][int(img_id[-3:])]
+            if image.ndim != 2:
+                image = np.load(path)[k] # when there is only one image saves as [w, h]
+
             if self.imagesize < image.shape[-1]:
                 image = image[self.imagesize//2 : -self.imagesize//2, self.imagesize//2 : -self.imagesize//2]
             if self.if_HP:
