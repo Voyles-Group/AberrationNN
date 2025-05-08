@@ -259,6 +259,9 @@ class TwoLevelDatasetDifference(TwoLevelDataset):
         data = []
         for k in self.keys:
             image = np.load(path)[k][int(img_id[-3:])]
+            if image.ndim != 2:
+                image = np.load(path)[k] # when there is only one image saves as [w, h]
+
             if self.imagesize < image.shape[-1]:
                 image = image[self.imagesize//2 : -self.imagesize//2, self.imagesize//2 : -self.imagesize//2]
             if self.transform:
@@ -268,7 +271,7 @@ class TwoLevelDatasetDifference(TwoLevelDataset):
                 image = hp_filter(image)
                 image = torch.as_tensor(image, dtype=torch.float32)
             if self.downsampling1 is not None and self.downsampling1 > 1:
-                image = F.interpolate(image[None, None, ...], scale_factor=1 / self.downsampling1, mode='bilinear')[0, 0]
+                image = F.interpolate(image[None, None, ...], scale_factor = 1 / self.downsampling1, mode='bilinear')[0, 0]
             if self.pre_normalization:
                 image = map01(image)
 
